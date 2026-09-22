@@ -28,6 +28,7 @@
   const CLIMB_FRAMES = 4;     // frames in assets/kitten_climb_sheet.png
   const CLIMB_STRIDE = 14;    // px of vertical travel per climb frame
   const VANISH_TIME = 0.45;   // seconds to slip through the cat door
+  const FINAL_STRETCH = 5;    // yarn balls left on the board when kittens speed up to 1.5x
 
   /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
   const Store = {
@@ -341,7 +342,11 @@
     update(dt) {
       this.time += dt;
       const g = this.game;
-      const sdt = dt * this.speed;
+      // final stretch: with 5 or fewer yarn balls left on the board the kittens hurry (1.5x)
+      const left = g.total - g.cleared;
+      const rush = left <= FINAL_STRETCH ? 1.5 : 1;
+      if (rush > 1 && !this.rushed) { this.rushed = true; this.float(W / 2, this.L.pic.y + this.L.pic.h / 2, 'final stretch!', '#e4002b'); Sfx.done(); }
+      const sdt = dt * this.speed * rush;
       if (this.shake > 0) this.shake -= dt;
       // ball slide animations
       for (const m of this.moving) m.t += dt;

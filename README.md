@@ -94,7 +94,7 @@ Yarn colours live in `js/engine.js` (`PALETTE`), UI colours in the `:root` block
 
 ## Pace
 
-Kittens stroll at 250 px/s with a ping-pong 4-frame walk cycle and a soft bob, so a level plays like a slow ASMR unravelling. The speed button cycles x1 → x2 → x3 for players who want it brisk.
+Kittens stroll at 250 px/s with a ping-pong 4-frame walk cycle and a soft bob, so a level plays like a slow ASMR unravelling. The speed button cycles x1 → x2 → x3 for players who want it brisk. Once five or fewer yarn balls are left on the board the kittens hurry at 1.5x to finish the picture.
 
 ## Licence
 
