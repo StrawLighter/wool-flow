@@ -100,7 +100,7 @@ function pickColours(rng, k) { const c = shuffle(PALETTE_KEYS.slice(), rng).slic
 
 function choosePicture(n, rc, rng, variant) {
   // showcase motifs on x5 and x0, otherwise alternate motif / pattern; later attempts try other pictures
-  const useMotif = (n % 5 === 0 || n % 2 === 1) && n !== 90;   // level 90: every motif at this recipe came out trivial, use a pattern
+  const useMotif = (n % 5 === 0 || n % 2 === 1) && n !== 90 && n !== 79;   // levels 79, 90: every motif at this recipe came out trivial, use a pattern
   variant = variant || 0;
   if (useMotif) {
     const m = MOTIFS[(n * 7 + Math.floor(n / 10) + variant) % MOTIFS.length];
@@ -184,7 +184,7 @@ function buildItems(pic, rc, rng) {
     const colours = Object.keys(outsideCounts).filter(c => outsideCounts[c] >= 6);
     if (!colours.length) continue;
     const colour = colours[Math.floor(rng() * colours.length)];
-    const need = Math.max(4, Math.floor(outsideCounts[colour] * (0.35 + rng() * 0.3)));
+    const need = Math.min(40, Math.max(4, Math.floor(outsideCounts[colour] * (0.35 + rng() * 0.3))));
     if (zips.some(o => !(x0 + zw <= o.x0 || o.x1 < x0 || y0 + zh <= o.y0 || o.y1 < y0))) continue;
     zips.push({ x0, y0, x1: x0 + zw - 1, y1: y0 + zh - 1, colour, need });
   }
