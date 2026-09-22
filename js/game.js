@@ -556,7 +556,7 @@
       if (k.state === 'vanish') {
         const u = Math.min(1, k.vanishT / VANISH_TIME); ctx.save(); ctx.globalAlpha = 1 - u; ctx.translate(k.x, k.y + u * 26); ctx.scale(1 - u * 0.6, 1 - u * 0.6); ctx.translate(-k.x, -k.y);
       }
-      if ((k.state === 'climb' || ((k.state === 'go' || k.state === 'exit' || k.state === 'home') && this.climbing(k))) && IMG.kitten_climb_sheet) {
+      if (k.state === 'climb' && IMG.kitten_climb_sheet) {   // climbing cycle only on the cat trees; everywhere else kittens walk
         const cs = tinted('kitten_climb_sheet', hexOf(colour), false);
         const fw = cs.width / CLIMB_FRAMES, fh = cs.height;
         const frame = Math.floor(k.odo / CLIMB_STRIDE) % CLIMB_FRAMES;
