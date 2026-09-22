@@ -38,7 +38,7 @@
 
   /* ---------- assets ---------- */
   const IMG = {};
-  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_climb_sheet', 'kitten_walk_up_sheet', 'kitten_walk_down_sheet', 'kitten_swipe_front_sheet', 'cat_tree', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
+  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_climb_sheet', 'kitten_walk_up_sheet', 'kitten_walk_down_sheet', 'kitten_swipe_front_sheet', 'cat_tree', 'prop_bag', 'prop_lock', 'prop_needle', 'prop_mystery', 'prop_zip', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
   function loadAssets() {
     const all = Promise.all(ASSET_LIST.map(n => new Promise(res => {
       const im = new Image(); im.onload = () => { IMG[n] = im; res(); }; im.onerror = () => res(); im.src = 'assets/' + n + '.png';
@@ -294,14 +294,20 @@
 
     playBall(b) {
       const g = this.game;
-      if (g.freeSlot() < 0) { this.shake = 0.3; Sfx.clog(); this.float(W / 2, this.L.cushY - 70, 'No free cushion!', '#e8453c'); return; }
-      const from = this.ballPos(b);
+      const grp = g.tieGroup(b);
+      const free = g.slots.filter(x => x === null).length;
+      if (free < grp.length) { this.shake = 0.3; Sfx.clog(); this.float(W / 2, this.L.cushY - 70, grp.length > 1 ? 'Tied: need ' + grp.length + ' free cushions!' : 'No free cushion!', '#e4002b'); return; }
+      const froms = grp.map(x => this.ballPos(x));
       const s = g.play(b.id);
       if (s < 0) return;
-      const to = this.slotPos(s);
-      this.moving.push({ ball: b, x0: from.x, y0: from.y, x1: to.x, y1: to.y - 14, t: 0, dur: 0.32 });
+      grp.forEach((x, i) => {
+        const to = this.slotPos(x.slot);
+        this.moving.push({ ball: x, x0: froms[i].x, y0: froms[i].y, x1: to.x, y1: to.y - 14, t: -i * 0.12, dur: 0.32 });
+        if (x.mystery) this.revealSoon = (this.revealSoon || []).concat([{ ball: x, t: 0.3 + i * 0.12 }]);
+      });
       Sfx.place();
-      if (!this.hasFree(b.segs[0][0])) { this.float(to.x, to.y - 90, 'waiting…', '#7a6a5a'); }
+      const to = this.slotPos(s);
+      if (!this.hasFree(b.segs[0][0]) && !b.mystery) { this.float(to.x, to.y - 90, 'waiting…', '#7a6a5a'); }
       this.armed = null;
     }
 
@@ -351,6 +357,7 @@
       // ball slide animations
       for (const m of this.moving) m.t += dt;
       this.moving = this.moving.filter(m => m.t < m.dur);
+      if (this.revealSoon) { for (const r of this.revealSoon) { r.t -= dt; if (r.t <= 0 && !r.done) { r.done = true; r.ball.shown = true; const p = this.slotPos(r.ball.slot); this.burst(p.x, p.y - 14, '#fff8e7', 12); this.burst(p.x, p.y - 14, hexOf(r.ball.segs[0][0]), 8); Sfx.done(); this.float(p.x, p.y - 90, E.PALETTE[r.ball.segs[0][0]].name + '!', hexOf(r.ball.segs[0][0])); } } this.revealSoon = this.revealSoon.filter(r => !r.done); }
       for (const p of this.popping) p.t += dt;
       this.popping = this.popping.filter(p => p.t < 0.35);
       // kittens
@@ -385,6 +392,10 @@
                 const p = this.slotPos(s); const from = this.stitchPos(t.x, t.y);
                 this.flying.push({ x0: from.x, y0: from.y, x1: p.x, y1: p.y - 14, t: 0, dur: ROLL_TIME, colour: hexOf(info.colour), size: Math.max(10, this.cell), slot: s });
                 this.burst(from.x, from.y, hexOf(info.colour), 4); Sfx.pop();
+                for (const ev of info.events || []) {
+                  if (ev.type === 'unlock') { const bp = this.ballPos(ev.ball); this.burst(bp.x, bp.y, '#ffd23f', 14); this.float(bp.x, bp.y - 60, 'unknotted!', '#3cb44b'); Sfx.done(); this.needleFly = { x0: from.x, y0: from.y, x1: bp.x, y1: bp.y, t: 0 }; }
+                  if (ev.type === 'unzip') { const z = ev.zip; const c = this.stitchPos((z.x0 + z.x1) / 2, (z.y0 + z.y1) / 2); this.burst(c.x, c.y, '#fff8e7', 16); this.float(c.x, c.y, 'unzipped!', '#e4002b'); Sfx.win(); z.anim = 0; }
+                }
                 if (info.segDone && !info.ballDone) { this.float(p.x, p.y - 90, 'colour change!', hexOf(b.segs[0][0])); this.burst(p.x, p.y - 14, hexOf(b.segs[0][0]), 8); }
               }
               if (!this.assign(k, t)) { if (!b.segs.length) this.leave(k, t); else this.setPath(k, this.pathHome(t.x, t.y, k.home), 'home'); }
@@ -424,6 +435,8 @@
       // rolling yarn balls
       for (const f of this.flying) { f.t += sdt; if (f.t >= f.dur) { this.burst(f.x1, f.y1, f.colour, 3); } }
       this.flying = this.flying.filter(f => f.t < f.dur);
+      if (this.needleFly) { this.needleFly.t += dt; if (this.needleFly.t > 0.6) this.needleFly = null; }
+      for (const z of g.zips) if (z.anim != null) { z.anim += dt; if (z.anim > 0.8) z.anim = null; }
       // particles & floaters
       for (const p of this.particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; }
       this.particles = this.particles.filter(p => p.t < p.life);
@@ -454,7 +467,7 @@
       this.drawPile(ctx);
       this.drawBoosters(ctx);
       // sliding balls
-      for (const m of this.moving) { const u = easeOut(Math.min(1, m.t / m.dur)); this.drawBall(ctx, m.ball, lerp(m.x0, m.x1, u), lerp(m.y0, m.y1, u) - Math.sin(u * Math.PI) * 60, Math.min(40, this.L.r), false); }
+      for (const m of this.moving) { const u = easeOut(Math.max(0, Math.min(1, m.t / m.dur))); this.drawBall(ctx, m.ball, lerp(m.x0, m.x1, u), lerp(m.y0, m.y1, u) - Math.sin(u * Math.PI) * 60, Math.min(40, this.L.r), false); }
       for (const p of this.popping) { const u = p.t / 0.35; ctx.globalAlpha = 1 - u; ctx.fillStyle = p.colour; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + u * 0.6), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
       // kittens, then rolling mini yarn balls
       for (const k of this.kittens) this.drawKitten(ctx, k);
@@ -490,6 +503,37 @@
           const px = this.gridX + x * s, py = this.gridY + y * s;
           ctx.beginPath(); ctx.moveTo(px + s * 0.5, py + s * 0.25); ctx.quadraticCurveTo(px + s * 0.75, py - s * 0.05, px + s * 0.9, py + s * 0.12); ctx.stroke();
         }
+      }
+      // needles hidden under stitches (keys for knotted balls)
+      const pn = IMG.prop_needle;
+      for (const b of g.balls) if (b.lock && !b.unlocked && b.state === 'pile' && !g.removed[b.lock.y][b.lock.x]) {
+        const c = this.stitchPos(b.lock.x, b.lock.y); const d = Math.max(14, s * 1.3);
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(c.x, c.y, d * 0.55, 0, Math.PI * 2); ctx.fill();
+        if (pn) ctx.drawImage(pn, c.x - d / 2, c.y - d / 2, d, d); else { ctx.fillStyle = '#ffd23f'; ctx.fillRect(c.x - 2, c.y - d / 2, 4, d); }
+      }
+      if (this.needleFly) { const f = this.needleFly, u = easeOut(Math.min(1, f.t / 0.6)); const d = 34; if (pn) ctx.drawImage(pn, lerp(f.x0, f.x1, u) - d / 2, lerp(f.y0, f.y1, u) - Math.sin(u * Math.PI) * 80 - d / 2, d, d); }
+      // zipped patches
+      for (const z of g.zips) {
+        if (z.open && z.anim == null) continue;
+        const a = this.stitchPos(z.x0, z.y0), b2 = this.stitchPos(z.x1, z.y1);
+        const x0 = a.x - s / 2, y0 = a.y - s / 2, x1 = b2.x + s / 2, y1 = b2.y + s / 2;
+        const openU = z.open ? Math.min(1, (z.anim || 0) / 0.8) : 0;
+        ctx.save(); ctx.globalAlpha = 1 - openU;
+        ctx.fillStyle = 'rgba(47,42,58,0.55)'; roundRect(ctx, x0, y0, x1 - x0, y1 - y0, 8); ctx.fill();
+        // zipper teeth along the middle
+        const my = (y0 + y1) / 2; ctx.strokeStyle = '#d9d9e2'; ctx.lineWidth = 3; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(x0 + 6, my - 3); ctx.lineTo(x1 - 6, my - 3); ctx.moveTo(x0 + 6, my + 3); ctx.lineTo(x1 - 6, my + 3); ctx.stroke(); ctx.setLineDash([]);
+        const pz = IMG.prop_zip; const zd = Math.min(38, (y1 - y0) * 0.9);
+        const zx = lerp(x1 - zd, x0 + zd * 0.4, openU);
+        if (pz) ctx.drawImage(pz, zx - zd * pz.width / pz.height / 2, my - zd / 2, zd * pz.width / pz.height, zd);
+        // requirement tag: "N × colour"
+        const have = Math.min(z.need, g.pulled[z.colour] || 0);
+        const label = have + '/' + z.need;
+        ctx.font = 'bold 18px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width + 34;
+        ctx.fillStyle = '#fff8e7'; roundRect(ctx, (x0 + x1) / 2 - tw / 2, y0 - 12, tw, 24, 12); ctx.fill();
+        ctx.fillStyle = hexOf(z.colour); ctx.beginPath(); ctx.arc((x0 + x1) / 2 - tw / 2 + 13, y0, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#2f2a3a'; ctx.fillText(label, (x0 + x1) / 2 + 8, y0 + 1);
+        ctx.restore();
       }
       this.drawTrees(ctx);
       // progress
@@ -536,8 +580,33 @@
       const g = this.game;
       // tray
       ctx.fillStyle = 'rgba(0,0,0,0.10)'; roundRect(ctx, 30, this.L.pileTop, W - 60, this.L.pileBottom - this.L.pileTop, 24); ctx.fill();
-      const balls = g.balls.filter(b => b.state === 'pile').sort((a, b) => b.row - a.row);
+      const inPile = g.balls.filter(b => b.state === 'pile');
+      // tie strings between grouped balls
+      const groups = {};
+      for (const b of inPile) if (b.tie != null) (groups[b.tie] = groups[b.tie] || []).push(b);
+      ctx.strokeStyle = '#e4002b'; ctx.lineWidth = 4; ctx.setLineDash([9, 7]);
+      for (const id in groups) { const gr = groups[id]; for (let i = 0; i < gr.length - 1; i++) { const a = this.ballPos(gr[i]), b = this.ballPos(gr[i + 1]); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo((a.x + b.x) / 2, Math.min(a.y, b.y) - 30, b.x, b.y); ctx.stroke(); } }
+      ctx.setLineDash([]);
+      // bags: draw the bag, then only its front ball peeking out
+      const bagsDrawn = new Set();
+      const balls = inPile.filter(b => b.bag == null).sort((a, b) => b.row - a.row);
+      for (const b of inPile) if (b.bag != null && !bagsDrawn.has(b.bag)) {
+        bagsDrawn.add(b.bag);
+        const p = this.ballPos(b); const bg = IMG.prop_bag; const r = this.L.r; const d = r * 2.9;
+        ctx.save(); if (!g.isAvailable(b) && !g.balls.some(o => o.bag === b.bag && o.state === 'pile' && g.isAvailable(o))) ctx.globalAlpha = 0.6;
+        if (bg) ctx.drawImage(bg, p.x - d * bg.width / bg.height / 2, p.y - d * 0.42, d * bg.width / bg.height, d);
+        ctx.restore();
+      }
       for (const b of balls) { const p = this.ballPos(b); this.drawBall(ctx, b, p.x, p.y, this.L.r, !g.isAvailable(b)); }
+      // front balls of bags on top of the bag, with a "left" badge
+      for (const b of inPile) if (b.bag != null && g.isAvailable(b) === !g.balls.some(o => o.bag === b.bag && o !== b && o.state === 'pile' && o.bagIdx < b.bagIdx)) {
+        if (g.balls.some(o => o.bag === b.bag && o !== b && o.state === 'pile' && o.bagIdx < b.bagIdx)) continue;
+        const p = this.ballPos(b); const r = this.L.r;
+        this.drawBall(ctx, b, p.x, p.y - r * 0.55, r * 0.9, !g.isAvailable(b));
+        const left = g.balls.filter(o => o.bag === b.bag && o.state === 'pile').length;
+        ctx.fillStyle = '#1f75fe'; ctx.beginPath(); ctx.arc(p.x + r * 0.95, p.y + r * 0.7, r * 0.38, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(r * 0.44) + 'px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(left), p.x + r * 0.95, p.y + r * 0.72);
+      }
     }
 
     drawBall(ctx, b, x, y, r, dim, clogged) {
@@ -547,6 +616,14 @@
       ctx.save();
       if (dim) ctx.globalAlpha = 0.55;
       ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(x, y + r * 0.85, r * 0.9, r * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+      if (b.mystery && !b.shown) {
+        // wrapped: paper parcel with a question mark, colour unknown
+        const pm = IMG.prop_mystery; const d = r * 2.3;
+        if (pm) ctx.drawImage(pm, x - d * pm.width / pm.height / 2, y - d / 2 - r * 0.15, d * pm.width / pm.height, d);
+        else { ctx.fillStyle = '#e9dcc6'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#3b2f2a'; ctx.font = 'bold ' + r + 'px Nunito'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('?', x, y); }
+        if (b.tie != null) this.drawTieTag(ctx, b, x, y, r);
+        ctx.restore(); return;
+      }
       if (im) {
         const t0 = tinted('yarn', c0); const d = r * 2.15;
         if (segs.length > 1) {
@@ -566,7 +643,14 @@
       ctx.fillStyle = 'rgba(255,255,255,0.92)'; roundRect(ctx, x - tw / 2, y + r * 0.15, tw, r * 0.72, r * 0.3); ctx.fill();
       ctx.fillStyle = '#3b2f2a'; ctx.fillText(label, x, y + r * 0.53);
       if (clogged) { ctx.font = '26px sans-serif'; ctx.fillText('💤', x + r * 0.7, y - r * 0.7); }
+      if (b.lock && !b.unlocked && b.state === 'pile') { const pl = IMG.prop_lock; const d = r * 1.1; if (pl) ctx.drawImage(pl, x - d * pl.width / pl.height / 2, y - r * 0.9, d * pl.width / pl.height, d); }
+      if (b.tie != null) this.drawTieTag(ctx, b, x, y, r);
       ctx.restore();
+    }
+    drawTieTag(ctx, b, x, y, r) {
+      const n = this.game.tieGroup(b).length; if (n < 2) return;
+      ctx.fillStyle = '#e4002b'; ctx.beginPath(); ctx.arc(x - r * 0.75, y - r * 0.7, r * 0.34, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold ' + Math.round(r * 0.42) + 'px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('×' + n, x - r * 0.75, y - r * 0.68);
     }
 
     drawKitten(ctx, k) {
@@ -679,14 +763,25 @@
 
   function buildSelect() {
     ui.levelGrid.innerHTML = '';
+    const CH = window.WOOL_CHAPTERS || [];
+    let lastCh = null;
     LEVELS.forEach(lv => {
+      const ch = Math.ceil(lv.id / 10);
+      if (ch !== lastCh) {
+        lastCh = ch;
+        const h = document.createElement('div'); h.className = 'chapter';
+        const done = LEVELS.filter(l => Math.ceil(l.id / 10) === ch && l.id < Progress.unlocked).length;
+        h.innerHTML = `<span class="chnum">Chapter ${ch}</span><span class="chname">${CH[ch - 1] || lv.chapter || ''}</span><span class="chdone">${done}/10</span>`;
+        ui.levelGrid.appendChild(h);
+      }
       const locked = lv.id > Progress.unlocked;
       const el = document.createElement('button');
-      el.className = 'lvl' + (locked ? ' locked' : '');
+      el.className = 'lvl' + (locked ? ' locked' : '') + (lv.id === Progress.unlocked ? ' current' : '');
       el.innerHTML = `<span class="num">${lv.id}</span><span class="name">${lv.name}</span><span class="stars">${'★'.repeat(Progress.stars(lv.id))}${'☆'.repeat(3 - Progress.stars(lv.id))}</span>`;
       if (!locked) el.onclick = () => { Sfx.init(); Sfx.click(); start(lv.id); };
       ui.levelGrid.appendChild(el);
     });
+    const cur = ui.levelGrid.querySelector('.lvl.current'); if (cur) setTimeout(() => cur.scrollIntoView({ block: 'center' }), 30);
   }
 
   function start(id) {
@@ -694,8 +789,8 @@
     session = new Session(lv);
     session.speed = parseInt(ui.speed.dataset.speed || '1', 10);
     ui.hudLevel.textContent = 'Level ' + lv.id + ' · ' + lv.name;
-    ui.hint.textContent = lv.hint;
-    ui.hint.classList.add('show'); clearTimeout(ui.hint._t); ui.hint._t = setTimeout(() => ui.hint.classList.remove('show'), 5200);
+    ui.hint.textContent = lv.hint || '';
+    if (lv.hint) { ui.hint.classList.add('show'); clearTimeout(ui.hint._t); ui.hint._t = setTimeout(() => ui.hint.classList.remove('show'), 6500); } else ui.hint.classList.remove('show');
     show('play');
   }
 
