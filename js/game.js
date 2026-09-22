@@ -18,9 +18,11 @@
     return { pic, cushY, pileY, rowH, spacing, r, pileTop: pileY - r - 16, pileBottom: pileBottom + r + 10 };
   }
   const KITTENS_PER_SLOT = 3;
-  const KITTEN_SPEED = 760;   // px / s along the walking path
+  const KITTEN_SPEED = 250;   // px / s along the walking path — a slow, ASMR stroll (x2 / x3 available)
   const WALK_FRAMES = 4;      // frames in assets/kitten_walk_sheet.png
-  const WALK_STRIDE = 26;     // px of travel per animation frame
+  const WALK_CYCLE = [0, 1, 2, 3, 2, 1]; // ping-pong through the sheet for a smooth loop
+  const WALK_STRIDE = 16;     // px of travel per animation step
+  const ROLL_TIME = 1.1;      // seconds for a pulled yarn ball to roll home
 
   /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
   const Store = {
@@ -251,7 +253,7 @@
       const g = this.game;
       if (this.boosters[kind] <= 0) { Sfx.clog(); return; }
       if (kind === 'basket') {
-        if (g.addSlot()) { this.boosters.basket--; this.boostersUsed++; Sfx.done(); this.float(W / 2, this.L.cushY - 80, '+1 cushion', '#5fbf5a'); this.checkEnd(); }
+        if (g.addSlot()) { this.boosters.basket--; this.boostersUsed++; Sfx.done(); this.float(W / 2, this.L.cushY - 80, '+1 cushion', '#3cb44b'); this.checkEnd(); }
         return;
       }
       this.armed = this.armed === kind ? null : kind; Sfx.click();
@@ -307,7 +309,7 @@
               // grab: the mini yarn ball rolls home by itself, the kitten walks on
               const t = k.target; this.held.delete(t.x + ',' + t.y);
               const p = this.slotPos(s); const from = this.stitchPos(t.x, t.y);
-              this.flying.push({ x0: from.x, y0: from.y, x1: p.x, y1: p.y - 14, t: 0, dur: 0.55, colour: hexOf(t.colour), size: Math.max(10, this.cell) });
+              this.flying.push({ x0: from.x, y0: from.y, x1: p.x, y1: p.y - 14, t: 0, dur: ROLL_TIME, colour: hexOf(t.colour), size: Math.max(10, this.cell) });
               Sfx.pop();
               if (!this.assign(k, t)) { this.setPath(k, this.pathHome(t.x, t.y, k.home), 'home'); k.target = null; }
             }
@@ -365,7 +367,7 @@
       // kittens, then rolling mini yarn balls
       for (const k of this.kittens) this.drawKitten(ctx, k);
       for (const f of this.flying) { const u = easeOut(Math.min(1, f.t / f.dur)); const x = lerp(f.x0, f.x1, u), y = lerp(f.y0, f.y1, u) - Math.sin(u * Math.PI) * 90;
-        ctx.save(); ctx.translate(x, y); ctx.rotate(u * Math.PI * 3); ctx.drawImage(stitchTile(f.colour, Math.round(f.size * 1.4)), -f.size * 0.7, -f.size * 0.7); ctx.restore(); }
+        ctx.save(); ctx.translate(x, y); ctx.rotate(u * Math.PI * 2); ctx.drawImage(stitchTile(f.colour, Math.round(f.size * 1.4)), -f.size * 0.7, -f.size * 0.7); ctx.restore(); }
       // particles
       for (const p of this.particles) { ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.colour; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
       ctx.globalAlpha = 1;
@@ -378,8 +380,8 @@
       const g = this.game; const PIC = this.L.pic;
       // frame
       ctx.fillStyle = 'rgba(0,0,0,0.12)'; roundRect(ctx, PIC.x + 6, PIC.y + 10, PIC.w, PIC.h, 26); ctx.fill();
-      ctx.fillStyle = '#c99a6b'; roundRect(ctx, PIC.x, PIC.y, PIC.w, PIC.h, 26); ctx.fill();
-      ctx.fillStyle = '#e6d3b8'; roundRect(ctx, PIC.x + 14, PIC.y + 14, PIC.w - 28, PIC.h - 28, 18); ctx.fill();
+      ctx.fillStyle = '#b97a45'; roundRect(ctx, PIC.x, PIC.y, PIC.w, PIC.h, 26); ctx.fill();
+      ctx.fillStyle = '#efe3cf'; roundRect(ctx, PIC.x + 14, PIC.y + 14, PIC.w - 28, PIC.h - 28, 18); ctx.fill();
       // faint canvas grid of the picture (ghost of the finished image)
       const s = this.cell;
       for (let y = 0; y < g.grid.h; y++) for (let x = 0; x < g.grid.w; x++) {
@@ -400,7 +402,7 @@
       // progress
       const pct = g.cleared / g.total;
       ctx.fillStyle = 'rgba(0,0,0,0.15)'; roundRect(ctx, PIC.x + 60, PIC.y + PIC.h - 8, PIC.w - 120, 12, 6); ctx.fill();
-      ctx.fillStyle = '#5fbf5a'; roundRect(ctx, PIC.x + 60, PIC.y + PIC.h - 8, Math.max(12, (PIC.w - 120) * pct), 12, 6); ctx.fill();
+      ctx.fillStyle = '#3cb44b'; roundRect(ctx, PIC.x + 60, PIC.y + PIC.h - 8, Math.max(12, (PIC.w - 120) * pct), 12, 6); ctx.fill();
     }
 
     drawCushions(ctx) {
@@ -415,7 +417,7 @@
           const clogged = b.segs.length && !g.hasLoose(b.segs[0][0]);
           this.drawBall(ctx, b, p.x, p.y - 14, Math.min(40, this.L.r + 2), false, clogged);
           if (this.armed && ((this.armed === 'snip' && b.segs.length > 1) || this.armed === 'hook')) {
-            ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 5; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.arc(p.x, p.y - 14, 52, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+            ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 5; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.arc(p.x, p.y - 14, 52, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
           }
         }
       }
@@ -471,10 +473,11 @@
       if (sheet) {
         const fw = sheet.width / WALK_FRAMES, fh = sheet.height;
         const moving = k.state !== 'idle';
-        let frame = moving ? Math.floor(k.odo / WALK_STRIDE) % WALK_FRAMES : 0;
+        let frame = moving ? WALK_CYCLE[Math.floor(k.odo / WALK_STRIDE) % WALK_CYCLE.length] : 0;
         if (k.dir < 0) frame = WALK_FRAMES - 1 - frame; // sheet is mirrored as a whole
         const w = h * fw / fh;
-        ctx.drawImage(sheet, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2, w, h);
+        const bob = moving ? Math.sin((k.odo / WALK_STRIDE) * Math.PI / 3) * h * 0.03 : Math.sin(this.time * 1.6 + k.x) * h * 0.012;
+        ctx.drawImage(sheet, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2 + bob, w, h);
       } else {
         const im = tinted('kitten_walk', hexOf(colour), k.dir < 0); if (!im) return;
         const w = h * im.width / im.height; const bob = k.state === 'idle' ? 0 : Math.sin(k.odo / 12) * 3;
@@ -487,9 +490,9 @@
       items.forEach(([key, icon, label], i) => {
         const x = W / 2 + (i - 1) * 150, y = BOOST_Y; const n = this.boosters[key];
         ctx.save(); if (n <= 0) ctx.globalAlpha = 0.4;
-        if (this.armed === key) { ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 48, 0, Math.PI * 2); ctx.stroke(); }
+        if (this.armed === key) { ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(x, y, 48, 0, Math.PI * 2); ctx.stroke(); }
         const im = IMG[icon]; if (im) ctx.drawImage(im, x - 42, y - 42, 84, 84); else { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 40, 0, Math.PI * 2); ctx.fill(); }
-        ctx.fillStyle = n > 0 ? '#5fbf5a' : '#999'; ctx.beginPath(); ctx.arc(x + 32, y + 30, 15, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = n > 0 ? '#e4002b' : '#a9a9b3'; ctx.beginPath(); ctx.arc(x + 32, y + 30, 15, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Nunito, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(n), x + 32, y + 31);
         ctx.fillStyle = '#5a463a'; ctx.font = 'bold 16px Nunito, sans-serif'; ctx.fillText(label, x, y + 58);
         ctx.restore();
@@ -593,7 +596,7 @@
   document.getElementById('btnRetry').onclick = () => { Sfx.click(); start(parseInt(ui.over.dataset.level, 10)); };
   document.getElementById('btnMenu').onclick = () => { Sfx.click(); show('select'); session = null; };
   document.getElementById('btnHintShow').onclick = () => { ui.hint.classList.add('show'); clearTimeout(ui.hint._t); ui.hint._t = setTimeout(() => ui.hint.classList.remove('show'), 5200); };
-  ui.speed.onclick = () => { const s = ui.speed.dataset.speed === '2' ? 1 : 2; ui.speed.dataset.speed = s; ui.speed.textContent = '▶ x' + s; if (session) session.speed = s; Sfx.click(); };
+  ui.speed.onclick = () => { const cur = parseInt(ui.speed.dataset.speed || '1', 10); const s = cur >= 3 ? 1 : cur + 1; ui.speed.dataset.speed = s; ui.speed.textContent = '▶ x' + s; if (session) session.speed = s; Sfx.click(); };
   function syncMute() { ui.mute.textContent = Sfx.muted ? '🔇' : '🔊'; }
   ui.mute.onclick = () => { Sfx.muted = !Sfx.muted; Store.set('woolflow.muted', Sfx.muted ? '1' : '0'); syncMute(); Sfx.init(); Sfx.click(); };
   syncMute();

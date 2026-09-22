@@ -21,22 +21,24 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  /* Yarn palette — bold, saturated primaries in the Sesame Street spirit.
+     Saliency comes from saturation against the neutral cream board (see README: colour system). */
   const PALETTE = {
-    R: { name: 'Red',    hex: '#e8453c' },
-    O: { name: 'Orange', hex: '#f4903a' },
-    Y: { name: 'Yellow', hex: '#f6d34a' },
-    G: { name: 'Green',  hex: '#5fbf5a' },
-    B: { name: 'Blue',   hex: '#4a86e8' },
-    P: { name: 'Purple', hex: '#9a63d6' },
-    K: { name: 'Pink',   hex: '#f48cb6' },
-    W: { name: 'Cream',  hex: '#f8f2e4' },
-    N: { name: 'Brown',  hex: '#9a6340' },
-    D: { name: 'Charcoal', hex: '#454055' },
-    C: { name: 'Teal',   hex: '#3fbfb4' },
-    L: { name: 'Lime',   hex: '#b6e05a' },
-    S: { name: 'Sky',    hex: '#8fd0f5' },
-    E: { name: 'Grey',   hex: '#b9b4ad' },
-    M: { name: 'Berry',  hex: '#b3324b' },
+    R: { name: 'Red',      hex: '#e4002b' },   // Elmo red
+    O: { name: 'Orange',   hex: '#ff7f11' },   // Ernie orange
+    Y: { name: 'Yellow',   hex: '#ffd23f' },   // Big Bird yellow
+    G: { name: 'Green',    hex: '#3cb44b' },   // Oscar green
+    B: { name: 'Blue',     hex: '#1f75fe' },   // Cookie Monster blue
+    P: { name: 'Purple',   hex: '#7b2cbf' },   // Count purple
+    K: { name: 'Pink',     hex: '#ff5fa2' },   // Abby pink
+    W: { name: 'Cream',    hex: '#fff8e7' },
+    N: { name: 'Brown',    hex: '#8b5a2b' },   // Snuffy brown
+    D: { name: 'Charcoal', hex: '#2f2a3a' },
+    C: { name: 'Teal',     hex: '#00a5a8' },
+    L: { name: 'Lime',     hex: '#a2d729' },
+    S: { name: 'Sky',      hex: '#5bc0eb' },   // Grover-ish sky
+    E: { name: 'Grey',     hex: '#a9a9b3' },
+    M: { name: 'Berry',    hex: '#c2185b' },
   };
 
   function parseGrid(rows) {

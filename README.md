@@ -80,6 +80,22 @@ To add a level: append a picture to `tools/pictures.js` (letters map to the pale
 
 Sprites, icons, logo, the 4-frame kitten walk cycle (`assets/kitten_walk_sheet.png`) and the knitted background were generated with Higgsfield (GPT Image 2.5), then trimmed and cleaned. Sprites are white so the game tints them per yarn colour at runtime (`multiply` + `destination-in` on an offscreen canvas). The mini yarn balls in the picture are the tinted yarn sprite scaled down; the frame, shadows and all UI are drawn in code.
 
+## Colour system
+
+Colours follow the attention principles in [Attention Insight's eye-catching colours guide](https://attentioninsight.com/eye-catching-colors/), applied Sesame Street style:
+
+- **Saliency through saturation.** The board and cards are a neutral cream so the yarn balls, in bold saturated primaries (Elmo red `#e4002b`, Big Bird yellow `#ffd23f`, Cookie Monster blue `#1f75fe`, Oscar green `#3cb44b`, Ernie orange `#ff7f11`, Count purple `#7b2cbf`, Abby pink `#ff5fa2`), pop out against it.
+- **60-30-10.** ~60% neutral base (knit background, cream board, cards), ~30% warm wood (frame, baskets, boosters), ~10% saturated accents (yarn, badges, CTA).
+- **Red for the call to action.** The Play / Next buttons and booster count badges are red, the highest-intensity colour in the article's testing, on white for contrast.
+- **At most four UI accent colours**: red, yellow, blue, green. Everything else in the chrome is neutral.
+- **Contrast.** Dark ink `#2f2a3a` on cream and white labels stays above the 4.5:1 body-text ratio; yellow and blue are used only as fills behind dark or white text.
+
+Yarn colours live in `js/engine.js` (`PALETTE`), UI colours in the `:root` block of `css/style.css`.
+
+## Pace
+
+Kittens stroll at 250 px/s with a ping-pong 4-frame walk cycle and a soft bob, so a level plays like a slow ASMR unravelling. The speed button cycles x1 → x2 → x3 for players who want it brisk.
+
 ## Licence
 
 MIT for the code. Art assets are for this project.
