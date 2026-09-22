@@ -331,35 +331,67 @@
 
   /* Solver: depth-first search over play orders with the deterministic drain.
      Returns { solvable, solution: [ballIds], nodes } */
-  function solve(level, limitNodes) {
+  /* FNV-1a 52-bit-ish hash of a state key: keeps the visited set small on big boards. */
+  function hashKey(str) {
+    let h1 = 0x811c9dc5, h2 = 0x01000193;
+    for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 16777619) >>> 0; h2 = Math.imul(h2 ^ c, 2246822519) >>> 0; }
+    return h1 * 4294967296 + h2;
+  }
+  function solve(level, limitNodes, timeMs) {
     limitNodes = limitNodes || 200000;
+    const deadline = Date.now() + (timeMs || 20000);
     const seen = new Set();
-    let nodes = 0;
+    let nodes = 0, aborted = false;
     const start = new Game(level);
     start.drain();
     const path = [];
     function dfs(g) {
       nodes++;
       if (g.status === 'won') return true;
-      if (g.status === 'lost' || nodes > limitNodes) return false;
-      const k = g.key();
+      if (g.status === 'lost') return false;
+      if (nodes > limitNodes || (nodes % 512 === 0 && Date.now() > deadline)) { aborted = true; return false; }
+      const k = hashKey(g.key());
       if (seen.has(k)) return false;
-      seen.add(k);
+      if (seen.size < 400000) seen.add(k);
       if (g.freeSlot() < 0) return false;
       const avail = g.playableBalls();
-      // Try balls whose colour has loose stitches first (heuristic).
-      avail.sort((a, b) => (g.hasLoose(b.segs[0][0]) ? 1 : 0) - (g.hasLoose(a.segs[0][0]) ? 1 : 0));
+      // Move ordering: balls whose colour has the most loose stitches first.
+      const score = new Map(); for (const b of avail) score.set(b.id, g.looseOf(b.segs[0][0]).length);
+      avail.sort((a, b) => score.get(b.id) - score.get(a.id));
       for (const b of avail) {
         const n = g.clone();
         n.play(b.id); n.drain();
         path.push(b.id);
         if (dfs(n)) return true;
         path.pop();
+        if (aborted) return false;
       }
       return false;
     }
     const ok = dfs(start);
-    return { solvable: ok, solution: ok ? path.slice() : null, nodes };
+    return { solvable: ok, solution: ok ? path.slice() : null, nodes, aborted };
+  }
+
+  /* Fast solution finder: weighted heuristic playouts (cheap, finds solutions to
+     hard-but-solvable levels the exhaustive search times out on), then a bounded DFS. */
+  function findSolution(level, opts) {
+    opts = opts || {};
+    const playouts = opts.playouts || 1500, rng = opts.rng || Math.random;
+    for (let p = 0; p < playouts; p++) {
+      const g = new Game(level); g.drain();
+      const path = []; let guard = 0;
+      while (g.status === 'playing' && guard++ < 400) {
+        const avail = g.playableBalls();
+        if (!avail.length) { g.evaluate(); break; }
+        // weight: balls that can start pulling now, more loose stitches = better; a little randomness
+        const w = avail.map(b => { const l = g.looseOf(b.segs[0][0]).length; return (l + 0.3) * (l + 0.3) + (b.lock ? 0.5 : 0); });
+        let r = rng() * w.reduce((a, b) => a + b, 0), i = 0; while (i < w.length - 1 && (r -= w[i]) > 0) i++;
+        g.play(avail[i].id); path.push(avail[i].id); g.drain();
+      }
+      if (g.status === 'won') return { solvable: true, solution: path, method: 'playout', playouts: p + 1 };
+    }
+    const d = solve(level, opts.nodes || 60000, opts.timeMs || 4000);
+    return { solvable: d.solvable, solution: d.solution, method: 'dfs', nodes: d.nodes, aborted: d.aborted };
   }
 
   /* Naive player: always plays the first available ball (left-to-right, top row first).
@@ -391,5 +423,5 @@
     return wins / trials;
   }
 
-  return { PALETTE, parseGrid, countColours, rowX, Game, solve, naivePlay, randomPlayWinRate };
+  return { PALETTE, parseGrid, countColours, rowX, Game, solve, findSolution, naivePlay, randomPlayWinRate };
 });

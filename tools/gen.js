@@ -21,8 +21,8 @@ const path = require('path');
 const E = require('../js/engine.js');
 const PICS = require('./pictures.js');
 const PAT = require('./patterns.js');
-const MOTIFS = require('./motifs.js').filter(m => Object.keys(E.countColours(E.parseGrid(m.grid))).length >= 3);
-const PATTERN_POOL = PAT.NAMES.filter(n => !['Pinstripes', 'Ladder', 'Gradient Steps'].includes(n));
+const MOTIFS = require('./motifs.js').filter(m => m.name !== 'Ice Lolly' && m.name !== 'Duck' && Object.keys(E.countColours(E.parseGrid(m.grid))).length >= 3);
+const PATTERN_POOL = PAT.NAMES.filter(n => !['Pinstripes', 'Ladder', 'Gradient Steps', 'Checkerboard', 'Stripes'].includes(n));
 
 const CHAPTERS = ['Cosy Corner', 'Wrapped Up', 'Tied Together', 'The Knitting Bag', 'Lost Needles', 'Zip It', 'Tangle Tangle', 'Deep Wool', 'Master Knitter', 'Grand Tapestry'];
 const HINTS = {
@@ -75,17 +75,17 @@ function recipe(n) {
   const late = pos >= 7;
   const r = {
     n, ch, chapter: CHAPTERS[ch - 1],
-    chunk: ch <= 2 ? [6, 14] : ch <= 4 ? [7, 16] : ch <= 6 ? [8, 18] : [8, 20],
-    tangled: ch === 2 ? (pos >= 3 ? 1 : 0) : ch <= 4 ? 2 : ch <= 6 ? 3 : late ? 6 : 4,
-    mystery: n >= 12 ? (ch === 2 ? 2 : ch <= 5 ? 2 : late ? 5 : 3) : 0,
-    ties: n >= 21 ? (ch === 3 ? (pos >= 5 ? 2 : 1) : ch <= 6 ? 1 : late ? 3 : 2) : 0,
+    ballsTarget: ch <= 2 ? 20 : ch <= 4 ? 24 : ch <= 6 ? 26 : late ? 30 : 28,
+    tangled: ch === 2 ? (pos >= 3 ? 1 : 0) : ch <= 4 ? 2 : ch <= 6 ? 3 : late ? 4 : 3,
+    mystery: n >= 12 ? (ch === 2 ? 2 : ch <= 5 ? 2 : late ? 4 : 3) : 0,
+    ties: n >= 21 ? (ch === 3 ? (pos >= 5 ? 2 : 1) : ch <= 6 ? 1 : late ? 2 : 1) : 0,
     tieSize: n >= 26 && (n % 3 === 2 || ch >= 8) ? 3 : 2,
-    bags: n >= 31 ? (ch === 4 ? 1 : ch <= 7 ? 1 : late ? 2 : 1) : 0,
+    bags: n >= 31 ? 1 : 0,
     bagSize: ch >= 8 ? 4 : 3,
-    locks: n >= 41 ? (ch === 5 ? (pos >= 5 ? 2 : 1) : ch <= 7 ? 1 : late ? 3 : 2) : 0,
-    zips: n >= 51 ? (ch === 6 ? (pos >= 6 ? 2 : 1) : ch <= 8 ? 1 : 2) : 0,
+    locks: n >= 41 ? (ch === 5 ? (pos >= 5 ? 2 : 1) : late ? 2 : 1) : 0,
+    zips: n >= 51 ? (ch === 6 ? (pos >= 6 ? 2 : 1) : ch >= 9 && pos >= 5 ? 2 : 1) : 0,
     colours: Math.min(7, 3 + Math.floor((n - 11) / 15) + (pos >= 5 ? 1 : 0)),
-    boardW: ch <= 2 ? [14, 20] : ch <= 4 ? [18, 24] : ch <= 7 ? [20, 26] : [24, 28],
+    boardW: ch <= 2 ? [14, 20] : ch <= 4 ? [18, 24] : ch <= 7 ? [20, 24] : [20, 24],
     // random-play win-rate band: gently down across the game, dipping at chapter ends
     target: (() => { const hi = Math.max(0.12, 0.8 - (ch - 2) * 0.085 - pos * 0.01); return [Math.max(0.02, hi - 0.3), hi]; })(),
     naiveMustFail: n >= 13,
@@ -98,17 +98,19 @@ function recipe(n) {
 const PALETTE_KEYS = Object.keys(E.PALETTE).filter(k => k !== 'W');
 function pickColours(rng, k) { const c = shuffle(PALETTE_KEYS.slice(), rng).slice(0, k); return c; }
 
-function choosePicture(n, rc, rng) {
-  // showcase motifs on x5 and x0, otherwise alternate motif / pattern
-  const useMotif = n % 5 === 0 || n % 2 === 1;
+function choosePicture(n, rc, rng, variant) {
+  // showcase motifs on x5 and x0, otherwise alternate motif / pattern; later attempts try other pictures
+  const useMotif = (n % 5 === 0 || n % 2 === 1) && n !== 90;   // level 90: every motif at this recipe came out trivial, use a pattern
+  variant = variant || 0;
   if (useMotif) {
-    const m = MOTIFS[(n * 7 + Math.floor(n / 10)) % MOTIFS.length];
+    const m = MOTIFS[(n * 7 + Math.floor(n / 10) + variant) % MOTIFS.length];
     let base = m.grid; const w = Math.max(...base.map(r => r.length));
     let scale = 1; while (w * scale < rc.boardW[0]) scale++;
-    if (w * scale > rc.boardW[1] + 4 && scale > 1) scale--;
+    if (w * scale > rc.boardW[1] + 2 && scale > 1) scale--;
+    scale = Math.min(scale, 3);
     return { name: m.name, grid: scaleGrid(base, scale) };
   }
-  const name = PATTERN_POOL[(n * 11 + 3) % PATTERN_POOL.length];
+  const name = PATTERN_POOL[(n * 11 + 3 + variant) % PATTERN_POOL.length];
   const w = ri(rng, rc.boardW[0], rc.boardW[1]); const h = ri(rng, Math.round(w * 0.9), Math.round(w * 1.15));
   const cols = pickColours(rng, Math.max(3, Math.min(rc.colours, 5)));
   return { name, grid: PAT.makePattern(name, rng, w, h, cols) };
@@ -118,9 +120,13 @@ function choosePicture(n, rc, rng) {
 function buildItems(pic, rc, rng) {
   const grid = E.parseGrid(pic.grid);
   const counts = E.countColours(grid);
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // size the balls so the pile lands around rc.ballsTarget balls whatever the picture size
+  const avg = Math.max(5, total / rc.ballsTarget);
+  const cmin = Math.max(4, Math.round(avg * 0.65)), cmax = Math.max(cmin + 3, Math.round(avg * 1.4));
   let chunks = [];
   for (const colour of Object.keys(counts))
-    for (const c of splitCount(counts[colour], rc.chunk[0], rc.chunk[1], rng)) chunks.push({ colour, n: c });
+    for (const c of splitCount(counts[colour], cmin, cmax, rng)) chunks.push({ colour, n: c });
   shuffle(chunks, rng);
   const balls = [];
   let tangled = rc.tangled;
@@ -193,9 +199,9 @@ function layoutRows(items, top) {
 }
 
 /* ---------- generation with verification ---------- */
-function attemptLevel(n, rc, seed) {
+function attemptLevel(n, rc, seed, variant) {
   const rng = mulberry32(seed);
-  const pic = choosePicture(n, rc, rng);
+  const pic = choosePicture(n, rc, rng, variant);
   const { items, zips } = buildItems(pic, rc, rng);
   const nItems = items.length;
   const top = nItems <= 8 ? 4 : nItems <= 22 ? 5 : nItems <= 30 ? 6 : 7;
@@ -207,18 +213,22 @@ function generate(n) {
   // if a recipe cannot be solved, relax it step by step (fewer zips, locks, ties, bags) rather than fail
   const relax = [{}, { zips: Math.max(0, base.zips - 1) }, { zips: 0 }, { zips: 0, locks: Math.max(0, base.locks - 1) }, { zips: 0, locks: 0 }, { zips: 0, locks: 0, ties: 0 }, { zips: 0, locks: 0, ties: 0, bags: 0 }];
   let best = null;
+  const tStart = Date.now(), CAP = 6 * 60 * 1000;
   for (let r = 0; r < relax.length; r++) {
     const rc = { ...base, ...relax[r] };
-    const attempts = r === 0 ? 160 : 80;
+    const attempts = r === 0 ? 240 : 60;
     for (let s = 0; s < attempts; s++) {
+      if (Date.now() - tStart > CAP && best) break;
       const seed = n * 100003 + s * 7919 + r * 104729;
-      const level = attemptLevel(n, rc, seed);
-      const sol = E.solve(level, base.ch >= 7 ? 450000 : 250000);
+      const level = attemptLevel(n, rc, seed, Math.floor(s / 30));
+      const st = E.countColours(E.parseGrid(level.grid)); const total = Object.values(st).reduce((a, b) => a + b, 0);
+      if (total > 520) continue;
+      const sol = E.findSolution(level, { playouts: 1200, rng: mulberry32(seed + 99), nodes: 60000, timeMs: 4000 });
       if (!sol.solvable) continue;
       const naive = E.naivePlay(level);
       const rate = E.randomPlayWinRate(level, 100, mulberry32(seed + 7));
       const mid = (rc.target[0] + rc.target[1]) / 2;
-      const dist = Math.abs(rate - mid) + (rc.naiveMustFail && naive === 'won' ? 0.5 : 0) + r * 0.05;
+      const dist = Math.abs(rate - mid) + (rc.naiveMustFail && naive === 'won' ? 0.5 : 0) + r * 0.05 + (rate <= 0 || rate >= 1 ? 0.6 : 0) + (base.ch >= 3 && rate > 0.6 ? 0.8 : 0);
       if (!best || dist < best.dist) best = { level, rate, dist, sol, seed, naive, relaxed: r };
       if (rate >= rc.target[0] && rate <= rc.target[1] && (!rc.naiveMustFail || naive !== 'won')) return { level, rate, sol, seed, tries: s + 1, naive, relaxed: r };
     }
@@ -267,7 +277,7 @@ function main() {
   if (process.argv.includes('--check')) {
     const LEVELS = require(out);
     let bad = 0;
-    for (const lv of LEVELS) { const sol = E.solve(lv, 500000); if (!sol.solvable) bad++; console.log(`Level ${lv.id} ${lv.name}: ${sol.solvable ? 'OK' : 'UNSOLVABLE'} (${sol.nodes} nodes)`); }
+    for (const lv of LEVELS) { const sol = E.findSolution(lv, { playouts: 2000, rng: mulberry32(lv.id), nodes: 300000, timeMs: 20000 }); if (!sol.solvable) bad++; console.log(`Level ${lv.id} ${lv.name}: ${sol.solvable ? 'OK' : 'UNSOLVABLE'} (${sol.nodes} nodes)`); }
     console.log(bad ? `${bad} UNSOLVABLE` : 'all solvable');
     return;
   }
