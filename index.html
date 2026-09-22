@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f3e7d3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Wool Flow</title>
+<meta name="description" content="Wool Flow — a cosy kitten-and-yarn puzzle. Tap yarn balls, send kittens to unravel knitted pixel pictures from the top down, and never clog every cushion.">
+<link rel="icon" href="assets/yarn.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+
+  <div id="loading" class="screen show"><div class="card"><p>Winding the yarn…</p></div></div>
+
+  <div id="title" class="screen">
+    <img id="logoImg" alt="Wool Flow">
+    <button id="btnPlay" class="big">Play</button>
+    <button id="btnHow" class="ghost">How to play</button>
+    <div id="how" class="card how">
+      <h3>How to play</h3>
+      <ul>
+        <li><b>Tap a yarn ball</b> in the pile. It hops into a cushion and kittens of that colour start pulling stitches.</li>
+        <li><b>Knitting unravels from the top.</b> A stitch is loose only when the stitch above it is gone. Look for the little white thread on loose stitches.</li>
+        <li><b>The number</b> is how many stitches the ball still needs. When it hits zero the cushion frees up.</li>
+        <li><b>A ball with nothing loose to pull just sits there.</b> Fill every cushion with sleeping kittens and the level is lost.</li>
+        <li><b>Tangled balls</b> are two-tone: they unravel the first colour, then turn into the second.</li>
+        <li><b>Deeper balls</b> unlock once the balls resting on them are gone.</li>
+        <li>Boosters: <b>+Cushion</b> adds a cushion, <b>Hook</b> pulls a ball back out of its cushion, <b>Snip</b> splits a tangled ball's second colour back into the pile. Win without boosters for three stars.</li>
+      </ul>
+      <button id="btnHowClose" class="ghost">Got it</button>
+    </div>
+    <p class="credit">a cosy puzzle · unravel the picture, don't clog the cushions</p>
+  </div>
+
+  <div id="select" class="screen">
+    <h2>Pick a picture</h2>
+    <div id="levelGrid"></div>
+    <button id="btnSelectBack" class="ghost">← Title</button>
+  </div>
+
+  <div id="hud">
+    <div class="bar">
+      <button id="btnBack" class="mini" title="Level select">☰</button>
+      <span id="hudLevel">Level 1</span>
+      <button id="btnHintShow" class="mini" title="Hint">?</button>
+      <button id="btnRestart" class="mini" title="Restart">↻</button>
+      <button id="btnSpeed" class="mini" data-speed="1">▶ x1</button>
+      <button id="btnMute" class="mini">🔊</button>
+    </div>
+    <div id="hint"></div>
+  </div>
+
+  <div id="over" class="screen">
+    <div class="card">
+      <img id="overImg" alt="">
+      <img id="overPic" class="pic" alt="">
+      <h2 id="overTitle"></h2>
+      <p id="overSub"></p>
+      <div class="row">
+        <button id="btnMenu" class="ghost">Levels</button>
+        <button id="btnRetry" class="ghost">Try again</button>
+        <button id="btnNext" class="big">Next ▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/engine.js"></script>
+<script src="js/levels.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
