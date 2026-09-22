@@ -37,7 +37,7 @@
 
   /* ---------- assets ---------- */
   const IMG = {};
-  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_climb_sheet', 'cat_tree', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
+  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_climb_sheet', 'kitten_walk_up_sheet', 'kitten_walk_down_sheet', 'kitten_swipe_front_sheet', 'cat_tree', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
   function loadAssets() {
     const all = Promise.all(ASSET_LIST.map(n => new Promise(res => {
       const im = new Image(); im.onload = () => { IMG[n] = im; res(); }; im.onerror = () => res(); im.src = 'assets/' + n + '.png';
@@ -101,6 +101,17 @@
       o.connect(g); g.connect(this.ctx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
     },
     pop() { this.tone(520 + Math.random() * 240, 0.08, 'triangle', 0.08); },
+    /* paw swipe: a short airy swish (band-passed noise) followed by a soft pat */
+    swipe() {
+      if (this.muted || !this.ctx) return;
+      const c = this.ctx, t0 = c.currentTime;
+      if (!this.noise) { const len = c.sampleRate * 0.5, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; this.noise = buf; }
+      const src = c.createBufferSource(); src.buffer = this.noise;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2; bp.frequency.setValueAtTime(2600, t0); bp.frequency.exponentialRampToValueAtTime(900, t0 + 0.16);
+      const g = c.createGain(); g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.09, t0 + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+      src.connect(bp); bp.connect(g); g.connect(c.destination); src.start(t0); src.stop(t0 + 0.2);
+      this.tone(140, 0.07, 'sine', 0.12, 0.13);
+    },
     place() { this.tone(330, 0.12, 'sine', 0.15); this.tone(440, 0.12, 'sine', 0.12, 0.06); },
     done() { [523, 659, 784].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.14, i * 0.07)); },
     clog() { this.tone(180, 0.25, 'sawtooth', 0.06); },
@@ -209,7 +220,13 @@
     setPath(k, path, state) {
       k.path = path; k.seg = 0; k.segT = 0; k.state = state;
       k.segLen = Math.hypot(path[1].x - path[0].x, path[1].y - path[0].y);
-      if (path[1].x !== path[0].x) k.dir = path[1].x > path[0].x ? 1 : -1;
+      this.face(k, path[0], path[1]);
+    }
+    /* 4-way heading from a segment: 'left' | 'right' | 'up' | 'down' */
+    face(k, a, b) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (Math.abs(dx) >= Math.abs(dy) * 0.9) { k.dir = dx >= 0 ? 1 : -1; k.heading = k.dir > 0 ? 'right' : 'left'; }
+      else k.heading = dy < 0 ? 'up' : 'down';
     }
     /* advance along the path; returns true when the end is reached */
     walk(k, dist) {
@@ -217,7 +234,7 @@
         const a = k.path[k.seg], b = k.path[k.seg + 1];
         const left = k.segLen - k.segT;
         if (dist >= left) { dist -= left; k.seg++; k.segT = 0; k.x = b.x; k.y = b.y; k.odo += left;
-          if (k.seg < k.path.length - 1) { const n = k.path[k.seg + 1]; k.segLen = Math.hypot(n.x - b.x, n.y - b.y); if (n.x !== b.x) k.dir = n.x > b.x ? 1 : -1; } }
+          if (k.seg < k.path.length - 1) { const n = k.path[k.seg + 1]; k.segLen = Math.hypot(n.x - b.x, n.y - b.y); this.face(k, b, n); } }
         else { k.segT += dist; k.odo += dist; const u = k.segLen ? k.segT / k.segLen : 1; k.x = lerp(a.x, b.x, u); k.y = lerp(a.y, b.y, u); dist = 0; }
       }
       return !k.path || k.seg >= k.path.length - 1;
@@ -348,9 +365,12 @@
             if (!b.segs.length) continue;
             this.assign(k, null);
           } else if (k.state === 'go') {
-            if (this.walk(k, KITTEN_SPEED * sdt)) { k.state = 'swipe'; k.swipeT = 0; }
+            if (this.walk(k, KITTEN_SPEED * sdt)) { k.state = 'swipe'; k.swipeT = 0; k.heading = 'down'; k.swished = 0; }
           } else if (k.state === 'swipe') {
             k.swipeT += sdt;
+            const u = k.swipeT / SWIPE_TIME;
+            if (k.swished === 0 && u >= 0.45) { k.swished = 1; Sfx.swipe(); }
+            if (k.swished === 1 && u >= 0.85) { k.swished = 2; Sfx.swipe(); }
             if (k.swipeT >= SWIPE_TIME) {
               // the swipe lands: pull the ball in the rules, it rolls home, the kitten walks on
               const t = k.target; this.held.delete(t.x + ',' + t.y);
@@ -569,22 +589,35 @@
         const cs = tinted('kitten_climb_sheet', hexOf(colour), false); const fw = cs.width / CLIMB_FRAMES, fh = cs.height; const ch = h * 1.15, w = ch * fw / fh;
         ctx.drawImage(cs, 0, 0, fw, fh, k.x - w / 2, k.y - ch / 2, w, ch); ctx.restore(); return;
       }
-      if (k.state === 'swipe' && IMG.kitten_swipe_sheet) {
-        const sw = tinted('kitten_swipe_sheet', hexOf(colour), k.dir < 0);
-        const fw = sw.width / 2, fh = sw.height;
+      if (k.state === 'swipe') {
         const u = k.swipeT / SWIPE_TIME;
         let frame = (u < 0.45 || (u > 0.7 && u < 0.85)) ? 0 : 1;   // raise, bat, raise, bat
-        if (k.dir < 0) frame = 1 - frame;
-        const w = h * fw / fh; const batting = frame === (k.dir < 0 ? 0 : 1); const lunge = batting ? h * 0.08 : 0;
-        ctx.drawImage(sw, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2 + lunge, w, h);
-        return;
+        const batting = frame === 1;
+        if (IMG.kitten_swipe_front_sheet) {                         // the ball is below the kitten: face the camera and bat down
+          const sw = tinted('kitten_swipe_front_sheet', hexOf(colour), false);
+          const fw = sw.width / 2, fh = sw.height, w = h * fw / fh, lunge = batting ? h * 0.08 : 0;
+          ctx.drawImage(sw, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2 + lunge, w, h);
+          return;
+        }
+        if (IMG.kitten_swipe_sheet) {
+          const sw = tinted('kitten_swipe_sheet', hexOf(colour), k.dir < 0);
+          const fw = sw.width / 2, fh = sw.height; if (k.dir < 0) frame = 1 - frame;
+          const w = h * fw / fh, lunge = batting ? h * 0.08 : 0;
+          ctx.drawImage(sw, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2 + lunge, w, h);
+          return;
+        }
       }
-      const sheet = IMG.kitten_walk_sheet ? tinted('kitten_walk_sheet', hexOf(colour), k.dir < 0) : null;
+      // walking: pick the sheet for the heading (up = back view, down = front view, else side view mirrored for left)
+      const heading = k.heading || (k.dir < 0 ? 'left' : 'right');
+      const moving = k.state !== 'idle';
+      let sheet = null, flip = false;
+      if (heading === 'up' && IMG.kitten_walk_up_sheet && moving) sheet = tinted('kitten_walk_up_sheet', hexOf(colour), false);
+      else if (heading === 'down' && IMG.kitten_walk_down_sheet && moving) sheet = tinted('kitten_walk_down_sheet', hexOf(colour), false);
+      else if (IMG.kitten_walk_sheet) { flip = k.dir < 0; sheet = tinted('kitten_walk_sheet', hexOf(colour), flip); }
       if (sheet) {
         const fw = sheet.width / WALK_FRAMES, fh = sheet.height;
-        const moving = k.state !== 'idle';
         let frame = moving ? WALK_CYCLE[Math.floor(k.odo / WALK_STRIDE) % WALK_CYCLE.length] : 0;
-        if (k.dir < 0) frame = WALK_FRAMES - 1 - frame; // sheet is mirrored as a whole
+        if (flip) frame = WALK_FRAMES - 1 - frame; // side sheet is mirrored as a whole
         const w = h * fw / fh;
         const bob = moving ? Math.sin((k.odo / WALK_STRIDE) * Math.PI / 3) * h * 0.03 : Math.sin(this.time * 1.6 + k.x) * h * 0.012;
         ctx.drawImage(sheet, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2 + bob, w, h);
