@@ -20,7 +20,7 @@ then visit <http://localhost:8765>. If GitHub Pages is enabled for this repo, th
 
 - The **picture** is made of tiny yarn balls, one per cell, each in one colour.
 - The **pile** holds yarn balls. Each ball shows a colour and a number: how many stitches of that colour it needs. Balls deeper in the pile unlock when the balls resting on them are gone.
-- Tap an available ball and it hops into one of the **five cushions**. Three kittens of that colour set off for the picture. Kittens only ever **walk**: along the wooden frame, then down through the unravelled area to a loose ball. Each ball they pull rolls back to the cushion on its own while the kitten walks on to the next one.
+- Tap an available ball and it hops into one of the **five cushions**. Three kittens of that colour set off for the picture. Kittens only ever **walk**: along the wooden frame, then down through the unravelled area to a loose ball. Each ball they pull rolls back to the cushion on its own while the kitten walks on to the next one. When a kitten reaches a ball it stops and bats at it; the ball only comes loose on the swipe, so a kitten never sets off for a ball that is not free yet. When their yarn is finished, kittens head for the nearest of the two wool **cat trees** flanking the picture, climb it with a climbing cycle, and slip out through the cat door on top. Every vertical stretch (frame rails, unravelled columns, trees) uses the climbing cycle.
 - **A stitch is loose only when the stitch above it is gone** (or it is the top stitch of its column). This is the wool twist: the picture unravels top-down like real knitting, so lower colours have to wait for the rows above them.
 - When a ball's count reaches zero it vanishes and the cushion frees.
 - A ball whose colour has no loose stitches just sits there with sleeping kittens. If **every cushion** is clogged like that, the level is lost.
@@ -78,7 +78,7 @@ To add a level: append a picture to `tools/pictures.js` (letters map to the pale
 
 ## Art
 
-Sprites, icons, logo, the 4-frame kitten walk cycle (`assets/kitten_walk_sheet.png`) and the knitted background were generated with Higgsfield (GPT Image 2.5), then trimmed and cleaned. Sprites are white so the game tints them per yarn colour at runtime (`multiply` + `destination-in` on an offscreen canvas). The mini yarn balls in the picture are the tinted yarn sprite scaled down; the frame, shadows and all UI are drawn in code.
+Sprites, icons, logo, the 4-frame kitten walk cycle (`assets/kitten_walk_sheet.png`), the 2-frame swipe and 4-frame climb sheets, and the wool cat tree (`assets/cat_tree.png`, drawn top cap + tiled posts + base so it stretches to any frame height) and the knitted background were generated with Higgsfield (GPT Image 2.5), then trimmed and cleaned. Sprites are white so the game tints them per yarn colour at runtime (`multiply` + `destination-in` on an offscreen canvas). The mini yarn balls in the picture are the tinted yarn sprite scaled down; the frame, shadows and all UI are drawn in code.
 
 ## Colour system
 

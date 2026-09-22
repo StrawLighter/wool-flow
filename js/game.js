@@ -14,8 +14,9 @@
     const pileBottom = BOOST_Y - 78;
     const pileY = pileBottom - (rows - 1) * rowH - r;         // centre of row 0
     const cushY = pileY - r - 84;
-    const pic = { x: 44, y: 104, w: 632, h: cushY - 66 - 104 };
-    return { pic, cushY, pileY, rowH, spacing, r, pileTop: pileY - r - 16, pileBottom: pileBottom + r + 10 };
+    const pic = { x: 104, y: 104, w: 512, h: cushY - 66 - 104 };
+    const trees = { w: 84, left: 52, right: W - 52, top: pic.y - 6, bottom: pic.y + pic.h + 30 };   // wool cat trees either side
+    return { pic, trees, cushY, pileY, rowH, spacing, r, pileTop: pileY - r - 16, pileBottom: pileBottom + r + 10 };
   }
   const KITTENS_PER_SLOT = 3;
   const KITTEN_SPEED = 250;   // px / s along the walking path — a slow, ASMR stroll (x2 / x3 available)
@@ -24,6 +25,9 @@
   const WALK_STRIDE = 16;     // px of travel per animation step
   const ROLL_TIME = 1.1;      // seconds for a pulled yarn ball to roll home
   const SWIPE_TIME = 0.7;     // seconds a kitten stops and bats at the ball before it comes loose
+  const CLIMB_FRAMES = 4;     // frames in assets/kitten_climb_sheet.png
+  const CLIMB_STRIDE = 14;    // px of vertical travel per climb frame
+  const VANISH_TIME = 0.45;   // seconds to slip through the cat door
 
   /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
   const Store = {
@@ -33,7 +37,7 @@
 
   /* ---------- assets ---------- */
   const IMG = {};
-  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
+  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_swipe_sheet', 'kitten_climb_sheet', 'cat_tree', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
   function loadAssets() {
     const all = Promise.all(ASSET_LIST.map(n => new Promise(res => {
       const im = new Image(); im.onload = () => { IMG[n] = im; res(); }; im.onerror = () => res(); im.src = 'assets/' + n + '.png';
@@ -179,6 +183,29 @@
       const wy = this.walkwayY(cx, cx);
       return [{ x: a.x, y: a.y }, { x: a.x, y: wy }, { x: side, y: wy }, { x: side, y: R.bottom }, { x: to.x, y: to.y }];
     }
+    /* the cat tree a kitten leaves by: nearest side */
+    treeX(x) { return x < W / 2 ? this.L.trees.left : this.L.trees.right; }
+    doorY() { return this.L.trees.top + 22; }
+    /* path from a stitch to the base of the nearest cat tree (then it climbs) */
+    pathExitFromStitch(cx, cy) {
+      const R = this.rails(); const a = this.standPos(cx, cy); const side = a.x < W / 2 ? R.left : R.right;
+      const wy = this.walkwayY(cx, cx); const tx = this.treeX(a.x);
+      return [{ x: a.x, y: a.y }, { x: a.x, y: wy }, { x: side, y: wy }, { x: side, y: R.bottom }, { x: tx, y: R.bottom }];
+    }
+    /* path from wherever a kitten stands (cushion area) to the base of the nearest tree */
+    pathExitFrom(x, y) { const R = this.rails(); const tx = this.treeX(x); return [{ x, y }, { x: tx, y: R.bottom }]; }
+    startClimb(k) { const tx = k.x; this.setPath(k, [{ x: tx, y: k.y }, { x: tx, y: this.doorY() }], 'climb'); }
+    leave(k, fromStitch) {
+      if (fromStitch) this.setPath(k, this.pathExitFromStitch(fromStitch.x, fromStitch.y), 'exit');
+      else this.setPath(k, this.pathExitFrom(k.x, k.y), 'exit');
+      k.leaving = true;
+    }
+    /* is the kitten currently on a vertical stretch? (climb animation) */
+    climbing(k) {
+      if (!k.path || k.seg >= k.path.length - 1) return k.state === 'climb';
+      const a = k.path[k.seg], b = k.path[k.seg + 1];
+      return Math.abs(b.y - a.y) > Math.abs(b.x - a.x) * 1.5;
+    }
     setPath(k, path, state) {
       k.path = path; k.seg = 0; k.segT = 0; k.state = state;
       k.segLen = Math.hypot(path[1].x - path[0].x, path[1].y - path[0].y);
@@ -280,7 +307,7 @@
       if (this.kittens.some(k => k.slot === i && (k.state === 'go' || k.state === 'swipe'))) { this.float(this.slotPos(i).x, this.L.cushY - 80, 'kittens busy!', '#e8453c'); return; }
       if (kind === 'hook') {
         const b = g.slots[i];
-        if (g.hook(i)) { this.boosters.hook--; this.boostersUsed++; for (const k of this.kittens) if (k.slot === i) { if (k.state === 'idle') k.remove = true; else k.orphan = true; } Sfx.done(); this.burst(this.slotPos(i).x, this.L.cushY, hexOf(b.segs[0][0]), 10); }
+        if (g.hook(i)) { this.boosters.hook--; this.boostersUsed++; for (const k of this.kittens) if (k.slot === i) { k.orphan = true; if (k.state === 'idle') this.leave(k, null); } Sfx.done(); this.burst(this.slotPos(i).x, this.L.cushY, hexOf(b.segs[0][0]), 10); }
       } else if (kind === 'snip') {
         const b = g.slots[i];
         if (!b || b.segs.length < 2) { this.float(this.slotPos(i).x, this.L.cushY - 80, 'not tangled', '#e8453c'); Sfx.clog(); return; }
@@ -309,8 +336,8 @@
         const b = g.slots[s];
         if (!b) continue;
         if (this.moving.some(m => m.ball === b)) continue; // still sliding in
-        let mine = this.kittens.filter(k => k.slot === s && !k.orphan);
-        while (mine.length < KITTENS_PER_SLOT) {
+        let mine = this.kittens.filter(k => k.slot === s && !k.orphan && !k.leaving);
+        while (b.segs.length && mine.length < KITTENS_PER_SLOT) {
           const p = this.slotPos(s);
           const k = { slot: s, colour: b.segs.length ? b.segs[0][0] : null, x: p.x + (mine.length - 1) * 24, y: p.y + 30, home: { x: p.x + (mine.length - 1) * 24, y: p.y + 30 }, state: 'idle', wait: mine.length * 0.25, dir: 1, odo: 0, path: null };
           this.kittens.push(k); mine.push(k);
@@ -335,11 +362,12 @@
                 this.burst(from.x, from.y, hexOf(info.colour), 4); Sfx.pop();
                 if (info.segDone && !info.ballDone) { this.float(p.x, p.y - 90, 'colour change!', hexOf(b.segs[0][0])); this.burst(p.x, p.y - 14, hexOf(b.segs[0][0]), 8); }
               }
-              if (!this.assign(k, t)) { this.setPath(k, this.pathHome(t.x, t.y, k.home), 'home'); }
+              if (!this.assign(k, t)) { if (!b.segs.length) this.leave(k, t); else this.setPath(k, this.pathHome(t.x, t.y, k.home), 'home'); }
             }
           } else if (k.state === 'home') {
             if (this.walk(k, KITTEN_SPEED * sdt)) { k.state = 'idle'; k.path = null; k.wait = 0.1; }
           }
+          // leaving kittens are advanced below, for every slot at once
         }
         // ball finished? (all stitches grabbed) — kittens still walking home become orphans
         if (!b.segs.length && !mine.some(k => k.state === 'go' || k.state === 'swipe') && !this.flying.some(f => f.slot === s)) {
@@ -347,12 +375,27 @@
           this.popping.push({ x: p.x, y: p.y - 14, colour: hexOf(b.orig[b.orig.length - 1][0]), t: 0, r: this.L.r });
           this.burst(p.x, p.y - 14, hexOf(b.orig[b.orig.length - 1][0]), 14); Sfx.done();
           g.finishBall(s);
-          for (const k of mine) { if (k.state === 'idle') k.remove = true; else k.orphan = true; }
+          for (const k of mine) {
+            k.orphan = true;
+            if (k.state === 'idle') this.leave(k, null);
+            else if (k.state === 'home' && k.path) {
+              // keep the remaining rail route, but swap the cushion for the tree base
+              const rest = k.path.slice(k.seg + 1, k.path.length - 1); const R = this.rails();
+              const np = [{ x: k.x, y: k.y }, ...rest, { x: this.treeX(rest.length ? rest[rest.length - 1].x : k.x), y: R.bottom }];
+              this.setPath(k, np, 'exit'); k.leaving = true;
+            }
+          }
         }
       }
-      // orphans keep walking home, then leave
-      for (const k of this.kittens) if (k.orphan && k.state === 'home' && this.walk(k, KITTEN_SPEED * sdt)) k.remove = true;
-      this.kittens = this.kittens.filter(k => !k.remove && !(k.orphan && k.state === 'idle'));
+      // kittens on their way out: walk to the tree, climb it, slip through the door
+      for (const k of this.kittens) {
+        if (k.orphan && k.state === 'home' && this.walk(k, KITTEN_SPEED * sdt)) this.leave(k, null);
+        else if (k.orphan && k.state === 'idle') this.leave(k, null);
+        else if (k.state === 'exit') { if (this.walk(k, KITTEN_SPEED * sdt)) this.startClimb(k); }
+        else if (k.state === 'climb') { if (this.walk(k, KITTEN_SPEED * 0.8 * sdt)) { k.state = 'vanish'; k.vanishT = 0; } }
+        else if (k.state === 'vanish') { k.vanishT += sdt; if (k.vanishT >= VANISH_TIME) { k.remove = true; if (!k.poofed) { k.poofed = true; this.burst(k.x, k.y, hexOf(k.colour || 'W'), 5); } } }
+      }
+      this.kittens = this.kittens.filter(k => !k.remove);
       // rolling yarn balls
       for (const f of this.flying) { f.t += sdt; if (f.t >= f.dur) { this.burst(f.x1, f.y1, f.colour, 3); } }
       this.flying = this.flying.filter(f => f.t < f.dur);
@@ -423,10 +466,27 @@
           ctx.beginPath(); ctx.moveTo(px + s * 0.5, py + s * 0.25); ctx.quadraticCurveTo(px + s * 0.75, py - s * 0.05, px + s * 0.9, py + s * 0.12); ctx.stroke();
         }
       }
+      this.drawTrees(ctx);
       // progress
       const pct = g.cleared / g.total;
       ctx.fillStyle = 'rgba(0,0,0,0.15)'; roundRect(ctx, PIC.x + 60, PIC.y + PIC.h - 8, PIC.w - 120, 12, 6); ctx.fill();
       ctx.fillStyle = '#3cb44b'; roundRect(ctx, PIC.x + 60, PIC.y + PIC.h - 8, Math.max(12, (PIC.w - 120) * pct), 12, 6); ctx.fill();
+    }
+
+    /* wool cat trees either side: top cap + tiled wrapped posts + base, stretched to the frame height */
+    drawTrees(ctx) {
+      const T = this.L.trees, im = IMG.cat_tree; if (!im) return;
+      const w = T.w, k = w / im.width, H = T.bottom - T.top;
+      const capH = im.height * 0.17 * k, baseH = im.height * 0.08 * k, midSrcY = im.height * 0.17, midSrcH = im.height * 0.72;
+      const tileH = midSrcH * k;
+      for (const cx of [T.left, T.right]) {
+        const x = cx - w / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.beginPath(); ctx.ellipse(cx, T.bottom + 4, w * 0.6, 9, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.drawImage(im, 0, 0, im.width, im.height * 0.17, x, T.top, w, capH);
+        let y = T.top + capH; const midEnd = T.bottom - baseH;
+        while (y < midEnd - 0.5) { const hh = Math.min(tileH, midEnd - y); ctx.drawImage(im, 0, midSrcY, im.width, midSrcH * (hh / tileH), x, y, w, hh); y += hh; }
+        ctx.drawImage(im, 0, im.height * 0.92, im.width, im.height * 0.08, x, midEnd, w, baseH);
+      }
     }
 
     drawCushions(ctx) {
@@ -486,12 +546,28 @@
 
     drawKitten(ctx, k) {
       const b = this.game.slots[k.slot];
-      const colour = k.colour || (b && b.segs.length ? b.segs[0][0] : 'W');
+      const colour = k.colour || (b ? (b.segs.length ? b.segs[0][0] : b.orig[b.orig.length - 1][0]) : 'W');
       const sleeping = k.state === 'idle' && !k.orphan && b && b.segs.length && !this.hasFree(b.segs[0][0]);
       const h = Math.max(30, Math.min(52, this.cell * 2.4));
       if (sleeping) {
         const im = tinted('kitten_sleep', hexOf(colour), false); if (!im) return;
         const hh = h * 0.8, w = hh * im.width / im.height; ctx.drawImage(im, k.x - w / 2, k.y - hh / 2 + 6, w, hh); return;
+      }
+      if (k.state === 'vanish') {
+        const u = Math.min(1, k.vanishT / VANISH_TIME); ctx.save(); ctx.globalAlpha = 1 - u; ctx.translate(k.x, k.y + u * 26); ctx.scale(1 - u * 0.6, 1 - u * 0.6); ctx.translate(-k.x, -k.y);
+      }
+      if ((k.state === 'climb' || ((k.state === 'go' || k.state === 'exit' || k.state === 'home') && this.climbing(k))) && IMG.kitten_climb_sheet) {
+        const cs = tinted('kitten_climb_sheet', hexOf(colour), false);
+        const fw = cs.width / CLIMB_FRAMES, fh = cs.height;
+        const frame = Math.floor(k.odo / CLIMB_STRIDE) % CLIMB_FRAMES;
+        const ch = h * 1.15, w = ch * fw / fh;
+        ctx.drawImage(cs, frame * fw, 0, fw, fh, k.x - w / 2, k.y - ch / 2, w, ch);
+        if (k.state === 'vanish') ctx.restore();
+        return;
+      }
+      if (k.state === 'vanish' && IMG.kitten_climb_sheet) {
+        const cs = tinted('kitten_climb_sheet', hexOf(colour), false); const fw = cs.width / CLIMB_FRAMES, fh = cs.height; const ch = h * 1.15, w = ch * fw / fh;
+        ctx.drawImage(cs, 0, 0, fw, fh, k.x - w / 2, k.y - ch / 2, w, ch); ctx.restore(); return;
       }
       if (k.state === 'swipe' && IMG.kitten_swipe_sheet) {
         const sw = tinted('kitten_swipe_sheet', hexOf(colour), k.dir < 0);
