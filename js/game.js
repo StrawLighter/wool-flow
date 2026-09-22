@@ -20,13 +20,21 @@
   const KITTENS_PER_SLOT = 3;
   const KITTEN_SPEED = 620; // px / s
 
+  /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
+  const Store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+  };
+
   /* ---------- assets ---------- */
   const IMG = {};
   const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
   function loadAssets() {
-    return Promise.all(ASSET_LIST.map(n => new Promise(res => {
+    const all = Promise.all(ASSET_LIST.map(n => new Promise(res => {
       const im = new Image(); im.onload = () => { IMG[n] = im; res(); }; im.onerror = () => res(); im.src = 'assets/' + n + '.png';
     })));
+    const timeout = new Promise(res => setTimeout(res, 8000)); // never hang on "loading"
+    return Promise.race([all, timeout]);
   }
 
   /* Tint a white sprite to a colour (multiply, keep alpha). Cached. */
@@ -73,7 +81,7 @@
 
   /* ---------- sound (tiny synth) ---------- */
   const Sfx = {
-    ctx: null, muted: localStorage.getItem('woolflow.muted') === '1',
+    ctx: null, muted: Store.get('woolflow.muted') === '1',
     init() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } } if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
     tone(f, dur, type, vol, when) {
       if (this.muted || !this.ctx) return;
@@ -94,10 +102,10 @@
 
   /* ---------- progress ---------- */
   const Progress = {
-    get unlocked() { return Math.max(1, parseInt(localStorage.getItem('woolflow.unlocked') || '1', 10)); },
-    set unlocked(v) { localStorage.setItem('woolflow.unlocked', String(v)); },
-    stars(id) { return parseInt(localStorage.getItem('woolflow.stars.' + id) || '0', 10); },
-    setStars(id, n) { if (n > this.stars(id)) localStorage.setItem('woolflow.stars.' + id, String(n)); },
+    get unlocked() { return Math.max(1, parseInt(Store.get('woolflow.unlocked') || '1', 10)); },
+    set unlocked(v) { Store.set('woolflow.unlocked', String(v)); },
+    stars(id) { return parseInt(Store.get('woolflow.stars.' + id) || '0', 10); },
+    setStars(id, n) { if (n > this.stars(id)) Store.set('woolflow.stars.' + id, String(n)); },
   };
 
   /* ---------- game session ---------- */
@@ -490,12 +498,16 @@
   }
 
   /* input */
-  canvas.addEventListener('pointerdown', e => {
+  function onTap(e) {
     if (screen !== 'play' || !session) return;
     Sfx.init();
-    const px = (e.clientX - offX) / scale, py = (e.clientY - offY) / scale;
+    const pt = e.touches ? e.touches[0] : e;
+    const px = (pt.clientX - offX) / scale, py = (pt.clientY - offY) / scale;
     session.tap(px, py);
-  });
+    if (e.cancelable) e.preventDefault();
+  }
+  if (window.PointerEvent) canvas.addEventListener('pointerdown', onTap);
+  else { canvas.addEventListener('touchstart', onTap, { passive: false }); canvas.addEventListener('mousedown', onTap); }
   document.getElementById('btnPlay').onclick = () => { Sfx.init(); Sfx.click(); show('select'); };
   document.getElementById('btnHow').onclick = () => { Sfx.init(); Sfx.click(); document.getElementById('how').classList.toggle('show'); };
   document.getElementById('btnHowClose').onclick = () => { document.getElementById('how').classList.remove('show'); };
@@ -508,7 +520,7 @@
   document.getElementById('btnHintShow').onclick = () => { ui.hint.classList.add('show'); clearTimeout(ui.hint._t); ui.hint._t = setTimeout(() => ui.hint.classList.remove('show'), 5200); };
   ui.speed.onclick = () => { const s = ui.speed.dataset.speed === '2' ? 1 : 2; ui.speed.dataset.speed = s; ui.speed.textContent = '▶ x' + s; if (session) session.speed = s; Sfx.click(); };
   function syncMute() { ui.mute.textContent = Sfx.muted ? '🔇' : '🔊'; }
-  ui.mute.onclick = () => { Sfx.muted = !Sfx.muted; localStorage.setItem('woolflow.muted', Sfx.muted ? '1' : '0'); syncMute(); Sfx.init(); Sfx.click(); };
+  ui.mute.onclick = () => { Sfx.muted = !Sfx.muted; Store.set('woolflow.muted', Sfx.muted ? '1' : '0'); syncMute(); Sfx.init(); Sfx.click(); };
   syncMute();
 
   /* loop — requestAnimationFrame when it is healthy, timer fallback when the
@@ -527,8 +539,13 @@
   setInterval(() => { const now = performance.now(); if (!rafAlive || now - lastRaf > 80) { tick(now); } }, 1000 / 60);
   window.WoolDebug = { get session() { return session; }, start, tick: (ms) => { for (let i = 0; i < ms / 16; i++) tick(last + 16); } };
 
+  window.addEventListener('error', e => {
+    const el = document.getElementById('loading');
+    if (el) el.querySelector('p').textContent = 'Something snagged: ' + (e.message || 'unknown error') + ' — try reloading.';
+  });
+
   loadAssets().then(() => {
-    document.getElementById('loading').remove();
+    const ld = document.getElementById('loading'); if (ld) ld.remove();
     document.getElementById('logoImg').src = 'assets/logo.png';
     show('title');
     last = performance.now();
