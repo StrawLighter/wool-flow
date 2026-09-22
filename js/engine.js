@@ -205,6 +205,21 @@
       return info;
     }
 
+    /* Pull one specific stitch for the ball in slot s (the renderer uses this when a
+       kitten actually reaches the ball). Fails unless the stitch is loose right now
+       and matches the ball's current colour. */
+    pullAt(slotIdx, x, y) {
+      const ball = this.slots[slotIdx];
+      if (!ball || !ball.segs.length) return null;
+      const colour = ball.segs[0][0];
+      if (this.grid.cells[y][x] !== colour || !this.isLoose(x, y)) return null;
+      this.removed[y][x] = true; this.cleared++;
+      ball.segs[0][1]--;
+      const info = { x, y, colour, segDone: false, ballDone: false };
+      if (ball.segs[0][1] <= 0) { ball.segs.shift(); info.segDone = true; if (!ball.segs.length) info.ballDone = true; }
+      return info;
+    }
+
     /* Release a finished ball from its slot (renderer calls after animations). */
     finishBall(slotIdx) {
       const ball = this.slots[slotIdx];
