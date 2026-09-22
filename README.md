@@ -18,9 +18,9 @@ then visit <http://localhost:8765>. If GitHub Pages is enabled for this repo, th
 
 ## How it plays
 
-- The **picture** is a knitted pixel image. Each cell is a stitch of one colour.
+- The **picture** is made of tiny yarn balls, one per cell, each in one colour.
 - The **pile** holds yarn balls. Each ball shows a colour and a number: how many stitches of that colour it needs. Balls deeper in the pile unlock when the balls resting on them are gone.
-- Tap an available ball and it hops into one of the **five cushions**. Three kittens of that colour run to the picture and pull loose stitches back to the cushion, one per trip.
+- Tap an available ball and it hops into one of the **five cushions**. Three kittens of that colour set off for the picture. Kittens only ever **walk**: along the wooden frame, then down through the unravelled area to a loose ball. Each ball they pull rolls back to the cushion on its own while the kitten walks on to the next one.
 - **A stitch is loose only when the stitch above it is gone** (or it is the top stitch of its column). This is the wool twist: the picture unravels top-down like real knitting, so lower colours have to wait for the rows above them.
 - When a ball's count reaches zero it vanishes and the cushion frees.
 - A ball whose colour has no loose stitches just sits there with sleeping kittens. If **every cushion** is clogged like that, the level is lost.
@@ -78,7 +78,7 @@ To add a level: append a picture to `tools/pictures.js` (letters map to the pale
 
 ## Art
 
-Sprites, icons, logo and the knitted background were generated with Higgsfield (GPT Image 2.5), then trimmed and cleaned. Sprites are white so the game tints them per yarn colour at runtime (`multiply` + `destination-in` on an offscreen canvas). Stitch tiles, baskets' shadows, the picture frame and all UI are drawn in code.
+Sprites, icons, logo, the 4-frame kitten walk cycle (`assets/kitten_walk_sheet.png`) and the knitted background were generated with Higgsfield (GPT Image 2.5), then trimmed and cleaned. Sprites are white so the game tints them per yarn colour at runtime (`multiply` + `destination-in` on an offscreen canvas). The mini yarn balls in the picture are the tinted yarn sprite scaled down; the frame, shadows and all UI are drawn in code.
 
 ## Licence
 

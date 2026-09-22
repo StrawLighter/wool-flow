@@ -18,7 +18,9 @@
     return { pic, cushY, pileY, rowH, spacing, r, pileTop: pileY - r - 16, pileBottom: pileBottom + r + 10 };
   }
   const KITTENS_PER_SLOT = 3;
-  const KITTEN_SPEED = 620; // px / s
+  const KITTEN_SPEED = 760;   // px / s along the walking path
+  const WALK_FRAMES = 4;      // frames in assets/kitten_walk_sheet.png
+  const WALK_STRIDE = 26;     // px of travel per animation frame
 
   /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
   const Store = {
@@ -28,7 +30,7 @@
 
   /* ---------- assets ---------- */
   const IMG = {};
-  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
+  const ASSET_LIST = ['yarn', 'kitten_walk', 'kitten_walk_sheet', 'kitten_carry', 'kitten_sleep', 'basket', 'icon_basket', 'icon_hook', 'icon_snip', 'logo', 'kitten_win', 'kitten_fail'];
   function loadAssets() {
     const all = Promise.all(ASSET_LIST.map(n => new Promise(res => {
       const im = new Image(); im.onload = () => { IMG[n] = im; res(); }; im.onerror = () => res(); im.src = 'assets/' + n + '.png';
@@ -54,20 +56,20 @@
     tintCache.set(key, c); return c;
   }
 
-  /* Pre-rendered knit stitch tile per colour and size. */
+  /* Pre-rendered mini yarn ball per colour and size — the picture is made of these. */
   const stitchCache = new Map();
   function stitchTile(hex, s) {
     const key = hex + '_' + s;
     if (stitchCache.has(key)) return stitchCache.get(key);
     const c = document.createElement('canvas'); c.width = s; c.height = s;
     const g = c.getContext('2d');
-    const r = Math.max(2, s * 0.22);
-    g.fillStyle = hex; roundRect(g, 0.5, 0.5, s - 1, s - 1, r); g.fill();
-    // knit "v" highlight + shade
-    g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = Math.max(1, s * 0.12);
-    g.beginPath(); g.moveTo(s * 0.22, s * 0.28); g.lineTo(s * 0.5, s * 0.62); g.lineTo(s * 0.78, s * 0.28); g.stroke();
-    g.strokeStyle = 'rgba(0,0,0,0.18)';
-    g.beginPath(); g.moveTo(s * 0.22, s * 0.5); g.lineTo(s * 0.5, s * 0.84); g.lineTo(s * 0.78, s * 0.5); g.stroke();
+    const yarn = tinted('yarn', hex);
+    if (yarn) {
+      // the yarn sprite has a loose thread on the right; crop to the round ball itself
+      const sw = yarn.width * 0.78, sh = yarn.height * 0.92;
+      g.drawImage(yarn, 0, yarn.height * 0.04, sw, sh, 0, 0, s, s);
+    } else { g.fillStyle = hex; g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 0.5, 0, Math.PI * 2); g.fill(); }
+    if (hex.toLowerCase() === '#f8f2e4') { g.strokeStyle = 'rgba(120,90,60,0.35)'; g.lineWidth = 1; g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 1, 0, Math.PI * 2); g.stroke(); }
     stitchCache.set(key, c); return c;
   }
 
@@ -113,7 +115,8 @@
     constructor(level) {
       this.level = level;
       this.game = new E.Game(level);
-      this.kittens = [];      // {slot, colour, x, y, state, tx, ty, t, dur, sx, sy, cx, cy}
+      this.kittens = [];      // walking kittens, see spawnKitten()
+      this.flying = [];       // mini yarn balls rolling back to their cushion
       this.particles = [];
       this.floaters = [];     // floating text
       this.moving = [];       // balls sliding pile -> cushion
@@ -141,6 +144,65 @@
     stitchPos(x, y) { return { x: this.gridX + x * this.cell + this.cell / 2, y: this.gridY + y * this.cell + this.cell / 2 }; }
     slotPos(i) { const n = this.game.slots.length; const sp = Math.min(124, 640 / n); return { x: W / 2 + (i - (n - 1) / 2) * sp, y: this.L.cushY }; }
     ballPos(b) { return { x: W / 2 + E.rowX(b.rowW, b.col) * this.L.spacing, y: this.L.pileY + b.row * this.L.rowH }; }
+
+    /* ----- kitten paths (kittens only ever walk: frame rails + unravelled cells) ----- */
+    rails() { const P = this.L.pic; return { left: P.x + 7, right: P.x + P.w - 7, top: P.y + 7, bottom: P.y + P.h + 26 }; }
+    /* first still-knitted row in a column (grid.h when the column is empty) */
+    topFilled(c) { const g = this.game; for (let y = 0; y < g.grid.h; y++) if (g.grid.cells[y][c] && !g.removed[y][c] && !this.held.has(c + ',' + y)) return y; return g.grid.h; }
+    /* y (px) of the lowest clear walkway between two columns, or the top rail */
+    walkwayY(c0, c1) {
+      let top = Infinity;
+      for (let c = Math.min(c0, c1); c <= Math.max(c0, c1); c++) top = Math.min(top, this.topFilled(c));
+      const row = top - 1;
+      return row < 0 ? this.rails().top : this.stitchPos(0, row).y;
+    }
+    /* path from a cushion to a stitch */
+    pathToStitch(from, gx, gy) {
+      const R = this.rails(); const t = this.stitchPos(gx, gy); const side = t.x < W / 2 ? R.left : R.right;
+      const wy = this.walkwayY(gx, gx);
+      return [{ x: from.x, y: from.y }, { x: side, y: R.bottom }, { x: side, y: wy }, { x: t.x, y: wy }, { x: t.x, y: t.y }];
+    }
+    /* path from one stitch to the next through the unravelled area */
+    pathBetween(cx, cy, gx, gy) {
+      const a = this.stitchPos(cx, cy), t = this.stitchPos(gx, gy);
+      const wy = this.walkwayY(cx, gx);
+      return [{ x: a.x, y: a.y }, { x: a.x, y: wy }, { x: t.x, y: wy }, { x: t.x, y: t.y }];
+    }
+    /* path from a stitch back to the cushion */
+    pathHome(cx, cy, to) {
+      const R = this.rails(); const a = this.stitchPos(cx, cy); const side = a.x < W / 2 ? R.left : R.right;
+      const wy = this.walkwayY(cx, cx);
+      return [{ x: a.x, y: a.y }, { x: a.x, y: wy }, { x: side, y: wy }, { x: side, y: R.bottom }, { x: to.x, y: to.y }];
+    }
+    setPath(k, path, state) {
+      k.path = path; k.seg = 0; k.segT = 0; k.state = state;
+      k.segLen = Math.hypot(path[1].x - path[0].x, path[1].y - path[0].y);
+      if (path[1].x !== path[0].x) k.dir = path[1].x > path[0].x ? 1 : -1;
+    }
+    /* advance along the path; returns true when the end is reached */
+    walk(k, dist) {
+      while (dist > 0 && k.path && k.seg < k.path.length - 1) {
+        const a = k.path[k.seg], b = k.path[k.seg + 1];
+        const left = k.segLen - k.segT;
+        if (dist >= left) { dist -= left; k.seg++; k.segT = 0; k.x = b.x; k.y = b.y; k.odo += left;
+          if (k.seg < k.path.length - 1) { const n = k.path[k.seg + 1]; k.segLen = Math.hypot(n.x - b.x, n.y - b.y); if (n.x !== b.x) k.dir = n.x > b.x ? 1 : -1; } }
+        else { k.segT += dist; k.odo += dist; const u = k.segLen ? k.segT / k.segLen : 1; k.x = lerp(a.x, b.x, u); k.y = lerp(a.y, b.y, u); dist = 0; }
+      }
+      return !k.path || k.seg >= k.path.length - 1;
+    }
+    /* give a kitten its next stitch (logic pull happens now; the ball is drawn until grabbed) */
+    assign(k, fromStitch) {
+      const g = this.game, s = k.slot, b = g.slots[s];
+      if (!b || !b.segs.length) return false;
+      const info = g.pull(s);
+      if (!info) return false;
+      this.held.add(info.x + ',' + info.y);
+      k.colour = info.colour; k.target = info;
+      if (fromStitch) this.setPath(k, this.pathBetween(fromStitch.x, fromStitch.y, info.x, info.y), 'go');
+      else this.setPath(k, this.pathToStitch({ x: k.x, y: k.y }, info.x, info.y), 'go');
+      if (info.segDone && !info.ballDone) { const p = this.slotPos(s); this.float(p.x, p.y - 90, 'colour change!', hexOf(b.segs[0][0])); this.burst(p.x, p.y - 14, hexOf(b.segs[0][0]), 8); }
+      return true;
+    }
 
     /* ----- input ----- */
     tap(px, py) {
@@ -197,10 +259,10 @@
     }
     applyArmed(i) {
       const g = this.game, kind = this.armed; this.armed = null;
-      if (this.kittens.some(k => k.slot === i && k.state !== 'idle')) { this.float(this.slotPos(i).x, this.L.cushY - 80, 'kittens busy!', '#e8453c'); return; }
+      if (this.kittens.some(k => k.slot === i && k.state === 'go')) { this.float(this.slotPos(i).x, this.L.cushY - 80, 'kittens busy!', '#e8453c'); return; }
       if (kind === 'hook') {
         const b = g.slots[i];
-        if (g.hook(i)) { this.boosters.hook--; this.boostersUsed++; this.kittens = this.kittens.filter(k => k.slot !== i); Sfx.done(); this.burst(this.slotPos(i).x, this.L.cushY, hexOf(b.segs[0][0]), 10); }
+        if (g.hook(i)) { this.boosters.hook--; this.boostersUsed++; for (const k of this.kittens) if (k.slot === i) { if (k.state === 'idle') k.remove = true; else k.orphan = true; } Sfx.done(); this.burst(this.slotPos(i).x, this.L.cushY, hexOf(b.segs[0][0]), 10); }
       } else if (kind === 'snip') {
         const b = g.slots[i];
         if (!b || b.segs.length < 2) { this.float(this.slotPos(i).x, this.L.cushY - 80, 'not tangled', '#e8453c'); Sfx.clog(); return; }
@@ -227,49 +289,47 @@
       // kittens
       for (let s = 0; s < g.slots.length; s++) {
         const b = g.slots[s];
-        if (!b) { this.kittens = this.kittens.filter(k => k.slot !== s); continue; }
+        if (!b) continue;
         if (this.moving.some(m => m.ball === b)) continue; // still sliding in
-        let mine = this.kittens.filter(k => k.slot === s);
+        let mine = this.kittens.filter(k => k.slot === s && !k.orphan);
         while (mine.length < KITTENS_PER_SLOT) {
           const p = this.slotPos(s);
-          const k = { slot: s, colour: b.segs.length ? b.segs[0][0] : null, x: p.x + (mine.length - 1) * 22, y: p.y + 30, state: 'idle', t: 0, dur: 0, wait: mine.length * 0.15, carry: null, dir: 1 };
+          const k = { slot: s, colour: b.segs.length ? b.segs[0][0] : null, x: p.x + (mine.length - 1) * 24, y: p.y + 30, home: { x: p.x + (mine.length - 1) * 24, y: p.y + 30 }, state: 'idle', wait: mine.length * 0.25, dir: 1, odo: 0, path: null };
           this.kittens.push(k); mine.push(k);
         }
         for (const k of mine) {
           if (k.state === 'idle') {
             if (k.wait > 0) { k.wait -= sdt; continue; }
             if (!b.segs.length) continue;
-            const info = g.pull(s);
-            if (!info) { k.sleepy = true; continue; }
-            k.sleepy = false;
-            this.held.add(info.x + ',' + info.y);
-            const t = this.stitchPos(info.x, info.y);
-            k.colour = info.colour; k.carry = null; k.target = info; k.sx = k.x; k.sy = k.y; k.tx = t.x; k.ty = t.y + this.cell * 0.1;
-            k.dur = Math.hypot(k.tx - k.sx, k.ty - k.sy) / KITTEN_SPEED; k.t = 0; k.state = 'go'; k.dir = k.tx >= k.sx ? 1 : -1;
-            if (info.segDone && !info.ballDone) { const p = this.slotPos(s); this.float(p.x, p.y - 90, 'colour change!', hexOf(b.segs[0][0])); this.burst(p.x, p.y - 14, hexOf(b.segs[0][0]), 8); }
+            this.assign(k, null);
           } else if (k.state === 'go') {
-            k.t += sdt;
-            if (k.t >= k.dur) {
-              // grab the stitch
-              this.held.delete(k.target.x + ',' + k.target.y);
-              this.burst(k.tx, k.ty, hexOf(k.colour), 4); Sfx.pop();
-              k.carry = k.colour; const p = this.slotPos(s);
-              k.sx = k.x; k.sy = k.y; k.tx = p.x + (Math.random() - 0.5) * 30; k.ty = p.y + 30; k.dur = Math.hypot(k.tx - k.sx, k.ty - k.sy) / KITTEN_SPEED; k.t = 0; k.state = 'back'; k.dir = k.tx >= k.sx ? 1 : -1;
-            } else { const u = k.t / k.dur; k.x = lerp(k.sx, k.tx, u); k.y = lerp(k.sy, k.ty, u); }
-          } else if (k.state === 'back') {
-            k.t += sdt;
-            if (k.t >= k.dur) { k.x = k.tx; k.y = k.ty; k.state = 'idle'; k.carry = null; k.wait = 0.05; }
-            else { const u = k.t / k.dur; k.x = lerp(k.sx, k.tx, u); k.y = lerp(k.sy, k.ty, u); }
+            if (this.walk(k, KITTEN_SPEED * sdt)) {
+              // grab: the mini yarn ball rolls home by itself, the kitten walks on
+              const t = k.target; this.held.delete(t.x + ',' + t.y);
+              const p = this.slotPos(s); const from = this.stitchPos(t.x, t.y);
+              this.flying.push({ x0: from.x, y0: from.y, x1: p.x, y1: p.y - 14, t: 0, dur: 0.55, colour: hexOf(t.colour), size: Math.max(10, this.cell) });
+              Sfx.pop();
+              if (!this.assign(k, t)) { this.setPath(k, this.pathHome(t.x, t.y, k.home), 'home'); k.target = null; }
+            }
+          } else if (k.state === 'home') {
+            if (this.walk(k, KITTEN_SPEED * sdt)) { k.state = 'idle'; k.path = null; k.wait = 0.1; }
           }
         }
-        // ball finished?
-        if (!b.segs.length && !mine.some(k => k.state !== 'idle')) {
+        // ball finished? (all stitches grabbed) — kittens still walking home become orphans
+        if (!b.segs.length && !mine.some(k => k.state === 'go') && !this.flying.some(f => f.slot === s)) {
           const p = this.slotPos(s);
           this.popping.push({ x: p.x, y: p.y - 14, colour: hexOf(b.orig[b.orig.length - 1][0]), t: 0, r: this.L.r });
           this.burst(p.x, p.y - 14, hexOf(b.orig[b.orig.length - 1][0]), 14); Sfx.done();
-          g.finishBall(s); this.kittens = this.kittens.filter(k => k.slot !== s);
+          g.finishBall(s);
+          for (const k of mine) { if (k.state === 'idle') k.remove = true; else k.orphan = true; }
         }
       }
+      // orphans keep walking home, then leave
+      for (const k of this.kittens) if (k.orphan && k.state !== 'idle' && this.walk(k, KITTEN_SPEED * sdt)) k.remove = true;
+      this.kittens = this.kittens.filter(k => !k.remove && !(k.orphan && k.state === 'idle'));
+      // rolling yarn balls
+      for (const f of this.flying) { f.t += sdt; if (f.t >= f.dur) { this.burst(f.x1, f.y1, f.colour, 3); } }
+      this.flying = this.flying.filter(f => f.t < f.dur);
       // particles & floaters
       for (const p of this.particles) { p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 500 * dt; }
       this.particles = this.particles.filter(p => p.t < p.life);
@@ -281,7 +341,7 @@
     checkEnd() {
       if (this.over) return;
       const g = this.game;
-      if (this.kittens.some(k => k.state !== 'idle') || this.moving.length) return;
+      if (this.kittens.some(k => k.state === 'go') || this.moving.length || this.flying.length) return;
       const st = g.evaluate();
       if (st === 'won') { this.over = 'won'; Sfx.win(); }
       else if (st === 'lost') {
@@ -302,8 +362,10 @@
       // sliding balls
       for (const m of this.moving) { const u = easeOut(Math.min(1, m.t / m.dur)); this.drawBall(ctx, m.ball, lerp(m.x0, m.x1, u), lerp(m.y0, m.y1, u) - Math.sin(u * Math.PI) * 60, Math.min(40, this.L.r), false); }
       for (const p of this.popping) { const u = p.t / 0.35; ctx.globalAlpha = 1 - u; ctx.fillStyle = p.colour; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + u * 0.6), 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
-      // kittens
+      // kittens, then rolling mini yarn balls
       for (const k of this.kittens) this.drawKitten(ctx, k);
+      for (const f of this.flying) { const u = easeOut(Math.min(1, f.t / f.dur)); const x = lerp(f.x0, f.x1, u), y = lerp(f.y0, f.y1, u) - Math.sin(u * Math.PI) * 90;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(u * Math.PI * 3); ctx.drawImage(stitchTile(f.colour, Math.round(f.size * 1.4)), -f.size * 0.7, -f.size * 0.7); ctx.restore(); }
       // particles
       for (const p of this.particles) { ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.colour; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); }
       ctx.globalAlpha = 1;
@@ -323,16 +385,16 @@
       for (let y = 0; y < g.grid.h; y++) for (let x = 0; x < g.grid.w; x++) {
         const c = g.grid.cells[y][x]; if (!c) continue;
         const px = this.gridX + x * s, py = this.gridY + y * s;
-        if (g.removed[y][x] && !this.held.has(x + ',' + y)) { ctx.fillStyle = 'rgba(0,0,0,0.045)'; ctx.fillRect(px + 1, py + 1, s - 2, s - 2); continue; }
-        ctx.drawImage(stitchTile(hexOf(c), Math.max(4, s - 1)), px, py);
+        if (g.removed[y][x] && !this.held.has(x + ',' + y)) { ctx.fillStyle = 'rgba(0,0,0,0.05)'; ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, Math.max(1.5, s * 0.16), 0, Math.PI * 2); ctx.fill(); continue; }
+        const ts = Math.max(6, Math.round(s * 1.08)); ctx.drawImage(stitchTile(hexOf(c), ts), px + (s - ts) / 2, py + (s - ts) / 2);
       }
-      // loose-row indicator: little "thread" on stitches that are loose
-      if (s >= 14) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 2;
+      // loose indicator: a little thread end curling up from balls that can be pulled
+      if (s >= 12) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = Math.max(1.5, s * 0.09); ctx.lineCap = 'round';
         for (let y = 0; y < g.grid.h; y++) for (let x = 0; x < g.grid.w; x++) {
-          if (!g.isLoose(x, y)) continue;
+          if (!g.isLoose(x, y) || this.held.has(x + ',' + y)) continue;
           const px = this.gridX + x * s, py = this.gridY + y * s;
-          ctx.beginPath(); ctx.moveTo(px + s * 0.3, py + 2); ctx.lineTo(px + s * 0.7, py + 2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(px + s * 0.5, py + s * 0.25); ctx.quadraticCurveTo(px + s * 0.75, py - s * 0.05, px + s * 0.9, py + s * 0.12); ctx.stroke();
         }
       }
       // progress
@@ -398,13 +460,26 @@
 
     drawKitten(ctx, k) {
       const b = this.game.slots[k.slot];
-      const sleeping = k.state === 'idle' && b && b.segs.length && !this.game.hasLoose(b.segs[0][0]);
-      const name = sleeping ? 'kitten_sleep' : (k.carry ? 'kitten_carry' : 'kitten_walk');
-      const im = tinted(name, hexOf(k.colour || (b && b.segs.length ? b.segs[0][0] : 'W')), k.dir < 0);
-      const h = sleeping ? 42 : 52; const w = im ? h * im.width / im.height : 42;
-      const bob = k.state === 'idle' ? 0 : Math.sin(this.time * 22) * 3;
-      if (im) ctx.drawImage(im, k.x - w / 2, k.y - h / 2 + bob, w, h);
-      if (k.carry) { const s = Math.max(8, this.cell * 0.7); ctx.drawImage(stitchTile(hexOf(k.carry), s), k.x + (k.dir < 0 ? -w / 2 - s * 0.2 : w / 2 - s * 0.8), k.y - s * 0.2 + bob); }
+      const colour = k.colour || (b && b.segs.length ? b.segs[0][0] : 'W');
+      const sleeping = k.state === 'idle' && !k.orphan && b && b.segs.length && !this.game.hasLoose(b.segs[0][0]);
+      const h = Math.max(30, Math.min(52, this.cell * 2.4));
+      if (sleeping) {
+        const im = tinted('kitten_sleep', hexOf(colour), false); if (!im) return;
+        const hh = h * 0.8, w = hh * im.width / im.height; ctx.drawImage(im, k.x - w / 2, k.y - hh / 2 + 6, w, hh); return;
+      }
+      const sheet = IMG.kitten_walk_sheet ? tinted('kitten_walk_sheet', hexOf(colour), k.dir < 0) : null;
+      if (sheet) {
+        const fw = sheet.width / WALK_FRAMES, fh = sheet.height;
+        const moving = k.state !== 'idle';
+        let frame = moving ? Math.floor(k.odo / WALK_STRIDE) % WALK_FRAMES : 0;
+        if (k.dir < 0) frame = WALK_FRAMES - 1 - frame; // sheet is mirrored as a whole
+        const w = h * fw / fh;
+        ctx.drawImage(sheet, frame * fw, 0, fw, fh, k.x - w / 2, k.y - h / 2, w, h);
+      } else {
+        const im = tinted('kitten_walk', hexOf(colour), k.dir < 0); if (!im) return;
+        const w = h * im.width / im.height; const bob = k.state === 'idle' ? 0 : Math.sin(k.odo / 12) * 3;
+        ctx.drawImage(im, k.x - w / 2, k.y - h / 2 + bob, w, h);
+      }
     }
 
     drawBoosters(ctx) {
