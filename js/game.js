@@ -31,9 +31,30 @@
   const FINAL_STRETCH = 5;    // yarn balls left on the board when kittens speed up to 1.5x
 
   /* ---------- safe storage (Safari with cookies blocked / in-app browsers throw) ---------- */
+  /* In the native app, saves are also mirrored to the OS key-value store (Capacitor Preferences)
+     because iOS can purge WebView localStorage under storage pressure. */
+  const Native = (() => {
+    try { const c = window.Capacitor; if (c && c.isNativePlatform && c.isNativePlatform()) return c.registerPlugin('Preferences'); } catch (e) { }
+    return null;
+  })();
   const Store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
-    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } if (Native) Native.set({ key: k, value: v }).catch(() => { }); },
+    async hydrate() {
+      if (!Native) return;
+      try {
+        const { keys } = await Native.keys();
+        for (const k of keys) {
+          if (k.indexOf('woolflow.') !== 0) continue;
+          const { value } = await Native.get({ key: k });
+          if (value == null) continue;
+          const cur = this.get(k);
+          if (cur == null || (k === 'woolflow.unlocked' ? parseInt(value, 10) > parseInt(cur, 10) : k.indexOf('woolflow.stars.') === 0 ? parseInt(value, 10) > parseInt(cur, 10) : false)) {
+            try { localStorage.setItem(k, value); } catch (e) { }
+          }
+        }
+      } catch (e) { }
+    },
   };
 
   /* ---------- assets ---------- */
@@ -865,7 +886,10 @@
     if (el) el.querySelector('p').textContent = 'Something snagged: ' + (e.message || 'unknown error') + ' — try reloading.';
   });
 
-  loadAssets().then(() => {
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Sfx.ctx && Sfx.ctx.state !== 'running') Sfx.ctx.resume().catch(() => { }); });
+
+  Promise.all([loadAssets(), Store.hydrate()]).then(() => {
+    Sfx.muted = Store.get('woolflow.muted') === '1'; syncMute();
     const ld = document.getElementById('loading'); if (ld) ld.remove();
     document.getElementById('logoImg').src = 'assets/logo.png';
     show('title');

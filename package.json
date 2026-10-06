@@ -1,0 +1,30 @@
+{
+  "name": "wool-flow",
+  "version": "1.0.0",
+  "description": "Wool Flow - kitten and yarn puzzle",
+  "scripts": {
+    "build": "node scripts/build-www.js",
+    "sync": "npm run build && cap sync ios",
+    "levels": "node tools/gen.js",
+    "check": "node tools/gen.js --check"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StrawLighter/wool-flow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/StrawLighter/wool-flow/issues"
+  },
+  "homepage": "https://github.com/StrawLighter/wool-flow#readme",
+  "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2",
+    "playwright-core": "^1.63.0"
+  },
+  "private": true
+}

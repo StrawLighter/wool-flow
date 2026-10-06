@@ -1,0 +1,11 @@
+{
+  "appId": "com.strawlighter.woolflow",
+  "appName": "Wool Flow",
+  "webDir": "www",
+  "backgroundColor": "#e9dcc6",
+  "ios": {
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "scrollEnabled": false
+  }
+}

@@ -103,3 +103,17 @@ Kittens stroll at 250 px/s with a ping-pong 4-frame walk cycle and a soft bob, s
 ## Licence
 
 MIT for the code. Art assets are for this project.
+
+## iOS app (Capacitor)
+
+The web game is wrapped as a native iPhone app with Capacitor (Swift Package Manager, no CocoaPods).
+
+```bash
+npm install          # required first: the Xcode project references node_modules
+npm run sync         # copies the web game into ios/App/App/public
+open ios/App/App.xcodeproj
+```
+
+In Xcode: select the App target, set your Team under Signing & Capabilities (bundle ID `com.strawlighter.woolflow`),
+choose a real device or "Any iOS Device", then Product > Archive > Distribute App > App Store Connect.
+Store copy, screenshots and the review checklist are in `store/`. Privacy policy: `privacy.html`.
