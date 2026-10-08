@@ -34,7 +34,13 @@
   /* In the native app, saves are also mirrored to the OS key-value store (Capacitor Preferences)
      because iOS can purge WebView localStorage under storage pressure. */
   const Native = (() => {
-    try { const c = window.Capacitor; if (c && c.isNativePlatform && c.isNativePlatform()) return c.registerPlugin('Preferences'); } catch (e) { }
+    try {
+      const c = window.Capacitor;
+      if (c && c.isNativePlatform && c.isNativePlatform() && c.nativePromise) {
+        const call = (m, o) => c.nativePromise('Preferences', m, o);
+        return { get: o => call('get', o), set: o => call('set', o), keys: () => call('keys', {}) };
+      }
+    } catch (e) { }
     return null;
   })();
   const Store = {
