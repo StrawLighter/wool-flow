@@ -1,4 +1,4 @@
-// Renders App Store screenshots (iPhone 6.9", 1320x2868) from the built web bundle using local Chrome.
+// Renders App Store screenshots (iPhone 6.3", 1206x2622) from the built web bundle using local Chrome.
 // Usage: npm run build && node store/make-screenshots.js
 const { chromium } = require('playwright-core');
 const http = require('http'), fs = require('fs'), path = require('path');
@@ -13,7 +13,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await new Promise(r => server.listen(0, r));
   const url = 'http://localhost:' + server.address().port + '/';
   const browser = await chromium.launch({ channel: 'chrome' });
-  const ctx = await browser.newContext({ viewport: { width: 440, height: 956 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+  const ctx = await browser.newContext({ viewport: { width: 402, height: 874 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(String(e)));

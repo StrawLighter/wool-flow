@@ -52,6 +52,6 @@ No login or account is needed. The app is fully offline and has no in-app purcha
 Boosters (+Cushion, Hook, Snip) are free, limited per level and are not purchasable.
 
 ## Screenshots
-Generated in store/screenshots (JPEG) at 1320x2868 (iPhone 6.9", the only required size for an iPhone-only app).
+Generated in store/screenshots (JPEG) at 1206x2622 (iPhone 6.3"; App Store Connect scales it for other iPhone sizes).
 Regenerate with: npm run build && node store/make-screenshots.js
 Upload order: 03, 04, 05, 06, 07, 02, 01.
